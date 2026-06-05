@@ -1,0 +1,30 @@
+# ESP-IDF build outputs
+build/
+build-esp32c3/
+managed_components/
+dependencies.lock
+
+# Runtime and generated diagnostics
+logs/
+output/
+.playwright-cli/
+
+# Local Codex coordination state
+.codex/
+.codex-task-notes/
+
+# Local release archives and backups
+backups/
+release-packages/
+
+# OS/editor noise
+.DS_Store
+._*
+*.swp
+*.tmp
+
+# Python and Node local artifacts
+__pycache__/
+*.pyc
+node_modules/
+npm-debug.log*

@@ -1,0 +1,1949 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>巡线小车：一件一件学 PID、速度与状态机</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23263238'/%3E%3Cpath d='M12 36c8-10 15-10 24 0s14 10 20 0' stroke='%23f7c948' stroke-width='7' fill='none' stroke-linecap='round'/%3E%3Ccircle cx='25' cy='24' r='5' fill='%23ef476f'/%3E%3Ccircle cx='39' cy='24' r='5' fill='%2306d6a0'/%3E%3C/svg%3E">
+  <style>
+    :root {
+      --ink: #172129;
+      --muted: #52616b;
+      --paper: #fffdf8;
+      --cream: #fff7e8;
+      --line: #d9e1e7;
+      --blue: #2d6cdf;
+      --blue-soft: #e8f1ff;
+      --green: #128a63;
+      --green-soft: #e5f7ef;
+      --yellow: #f0b429;
+      --yellow-soft: #fff4cf;
+      --red: #d64550;
+      --red-soft: #ffe8ea;
+      --violet: #6d5bd0;
+      --violet-soft: #f0edff;
+      --teal: #0f7c80;
+      --teal-soft: #e1f6f7;
+      --shadow: 0 16px 40px rgba(24, 36, 48, 0.12);
+      --radius: 8px;
+      --max: 1160px;
+      --nav-h: 66px;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html {
+      scroll-behavior: smooth;
+    }
+
+    body {
+      margin: 0;
+      color: var(--ink);
+      background: var(--paper);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+      line-height: 1.68;
+    }
+
+    img,
+    canvas {
+      display: block;
+      max-width: 100%;
+    }
+
+    a {
+      color: inherit;
+      text-decoration: none;
+    }
+
+    .site-nav {
+      position: sticky;
+      top: 0;
+      z-index: 20;
+      height: var(--nav-h);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: rgba(255, 253, 248, 0.92);
+      border-bottom: 1px solid rgba(23, 33, 41, 0.08);
+      backdrop-filter: blur(16px);
+    }
+
+    .nav-inner {
+      width: min(var(--max), calc(100% - 32px));
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 20px;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      min-width: 0;
+      font-weight: 800;
+    }
+
+    .brand-mark {
+      width: 34px;
+      height: 34px;
+      border-radius: 8px;
+      background: #19252f;
+      position: relative;
+      flex: 0 0 auto;
+      overflow: hidden;
+    }
+
+    .brand-mark::before {
+      content: "";
+      position: absolute;
+      left: 7px;
+      right: 7px;
+      top: 17px;
+      height: 6px;
+      border-radius: 999px;
+      background: var(--yellow);
+      transform: rotate(-8deg);
+    }
+
+    .brand-mark::after {
+      content: "";
+      position: absolute;
+      width: 7px;
+      height: 7px;
+      border-radius: 999px;
+      background: #ef476f;
+      left: 10px;
+      top: 9px;
+      box-shadow: 11px 0 0 #06d6a0;
+    }
+
+    .brand span {
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .nav-links {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      overflow-x: auto;
+      padding-bottom: 2px;
+    }
+
+    .nav-links a {
+      flex: 0 0 auto;
+      min-height: 36px;
+      padding: 7px 12px;
+      border-radius: 999px;
+      color: #31414c;
+      font-weight: 700;
+      font-size: 0.94rem;
+    }
+
+    .nav-links a:hover,
+    .nav-links a:focus-visible {
+      outline: none;
+      background: #edf3f8;
+    }
+
+    .hero {
+      min-height: calc(100vh - var(--nav-h) - 56px);
+      display: grid;
+      align-items: stretch;
+      background:
+        linear-gradient(90deg, rgba(20, 29, 37, 0.90), rgba(20, 29, 37, 0.68) 47%, rgba(20, 29, 37, 0.16)),
+        url("assets/line-step-hero-simple.jpg") center / cover no-repeat;
+      color: #fff;
+    }
+
+    .hero-inner {
+      width: min(var(--max), calc(100% - 32px));
+      margin: 0 auto;
+      display: grid;
+      align-content: center;
+      padding: 68px 0 76px;
+    }
+
+    .hero-copy {
+      max-width: 720px;
+    }
+
+    .kicker {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      min-height: 34px;
+      padding: 5px 12px;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.14);
+      border: 1px solid rgba(255, 255, 255, 0.24);
+      color: #fff7d7;
+      font-weight: 800;
+      font-size: 0.95rem;
+    }
+
+    .hero h1 {
+      margin: 22px 0 18px;
+      font-size: clamp(2.6rem, 7vw, 5.8rem);
+      line-height: 1.04;
+      letter-spacing: 0;
+    }
+
+    .hero p {
+      margin: 0;
+      max-width: 670px;
+      color: rgba(255, 255, 255, 0.88);
+      font-size: clamp(1.08rem, 2vw, 1.35rem);
+    }
+
+    .chapter-row {
+      margin-top: 34px;
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 12px;
+      max-width: 880px;
+    }
+
+    .chapter-chip {
+      min-height: 116px;
+      padding: 16px;
+      border-radius: var(--radius);
+      background: rgba(255, 255, 255, 0.13);
+      border: 1px solid rgba(255, 255, 255, 0.2);
+    }
+
+    .chapter-chip b {
+      display: block;
+      margin-bottom: 6px;
+      color: #fff;
+      font-size: 1.04rem;
+    }
+
+    .chapter-chip span {
+      display: block;
+      color: rgba(255, 255, 255, 0.78);
+      font-size: 0.94rem;
+      line-height: 1.5;
+    }
+
+    .section {
+      scroll-margin-top: calc(var(--nav-h) + 18px);
+      padding: 82px 0;
+      background: var(--paper);
+    }
+
+    .section.alt {
+      background: #f4f9ff;
+    }
+
+    .section.warm {
+      background: #fff8e8;
+    }
+
+    .section.green {
+      background: #eef8f0;
+    }
+
+    .section.dark {
+      background: #17222b;
+      color: #f8fbff;
+    }
+
+    .wrap {
+      width: min(var(--max), calc(100% - 32px));
+      margin: 0 auto;
+    }
+
+    .section-head {
+      display: grid;
+      grid-template-columns: minmax(0, 0.98fr) minmax(260px, 0.58fr);
+      gap: 34px;
+      align-items: end;
+      margin-bottom: 38px;
+    }
+
+    .eyebrow {
+      display: inline-flex;
+      align-items: center;
+      margin-bottom: 12px;
+      min-height: 30px;
+      padding: 4px 10px;
+      border-radius: 999px;
+      background: var(--yellow-soft);
+      color: #7a5200;
+      font-weight: 900;
+      font-size: 0.86rem;
+    }
+
+    .section.dark .eyebrow {
+      background: rgba(247, 201, 72, 0.17);
+      color: #ffe398;
+    }
+
+    h2 {
+      margin: 0;
+      max-width: 850px;
+      font-size: clamp(2rem, 4.5vw, 3.7rem);
+      line-height: 1.12;
+      letter-spacing: 0;
+    }
+
+    .section-head p,
+    .lede {
+      margin: 0;
+      color: var(--muted);
+      font-size: 1.05rem;
+    }
+
+    .section.dark .section-head p,
+    .section.dark .lede {
+      color: rgba(248, 251, 255, 0.76);
+    }
+
+    .big-idea {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+      gap: 24px;
+      align-items: center;
+      margin-bottom: 28px;
+    }
+
+    .media-frame {
+      border-radius: var(--radius);
+      overflow: hidden;
+      background: #fff;
+      border: 1px solid rgba(23, 33, 41, 0.08);
+      box-shadow: var(--shadow);
+    }
+
+    .media-frame img {
+      width: 100%;
+      aspect-ratio: 16 / 9;
+      object-fit: cover;
+    }
+
+    .big-copy {
+      padding: 10px 0;
+    }
+
+    .big-copy h3,
+    .lesson-copy h3,
+    .parameter-copy h3,
+    .state-copy h3 {
+      margin: 0 0 12px;
+      font-size: clamp(1.45rem, 2.8vw, 2.25rem);
+      line-height: 1.2;
+      letter-spacing: 0;
+    }
+
+    .big-copy p,
+    .lesson-copy p,
+    .parameter-copy p,
+    .state-copy p {
+      margin: 0 0 14px;
+      color: var(--muted);
+      font-size: 1.02rem;
+    }
+
+    .section.dark .big-copy p,
+    .section.dark .lesson-copy p,
+    .section.dark .state-copy p {
+      color: rgba(248, 251, 255, 0.78);
+    }
+
+    .simple-list {
+      margin: 18px 0 0;
+      padding: 0;
+      list-style: none;
+      display: grid;
+      gap: 10px;
+    }
+
+    .simple-list li {
+      display: grid;
+      grid-template-columns: 30px minmax(0, 1fr);
+      gap: 10px;
+      align-items: start;
+      color: #33424d;
+    }
+
+    .section.dark .simple-list li {
+      color: rgba(248, 251, 255, 0.86);
+    }
+
+    .dot {
+      width: 30px;
+      height: 30px;
+      border-radius: 999px;
+      display: grid;
+      place-items: center;
+      font-weight: 900;
+      color: #fff;
+      background: var(--blue);
+      line-height: 1;
+    }
+
+    .dot.green {
+      background: var(--green);
+    }
+
+    .dot.red {
+      background: var(--red);
+    }
+
+    .dot.yellow {
+      background: #b7791f;
+    }
+
+    .lesson-stack,
+    .parameter-stack,
+    .state-stack {
+      display: grid;
+      gap: 24px;
+    }
+
+    .lesson-card,
+    .parameter-card,
+    .state-card {
+      display: grid;
+      grid-template-columns: minmax(310px, 0.94fr) minmax(0, 1.06fr);
+      gap: 26px;
+      align-items: stretch;
+      padding: 20px;
+      border-radius: var(--radius);
+      background: rgba(255, 255, 255, 0.86);
+      border: 1px solid rgba(23, 33, 41, 0.08);
+      box-shadow: 0 10px 26px rgba(23, 33, 41, 0.08);
+    }
+
+    .section.dark .state-card {
+      background: rgba(255, 255, 255, 0.08);
+      border-color: rgba(255, 255, 255, 0.14);
+      box-shadow: none;
+    }
+
+    .lesson-card.reverse,
+    .parameter-card.reverse,
+    .state-card.reverse {
+      grid-template-columns: minmax(0, 1.06fr) minmax(310px, 0.94fr);
+    }
+
+    .lesson-card.reverse .media-frame,
+    .parameter-card.reverse .media-frame,
+    .state-card.reverse .media-frame {
+      order: 2;
+    }
+
+    .lesson-copy,
+    .parameter-copy,
+    .state-copy {
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      min-width: 0;
+      padding: 8px 2px;
+    }
+
+    .tagline {
+      display: inline-flex;
+      width: fit-content;
+      align-items: center;
+      min-height: 30px;
+      padding: 4px 10px;
+      margin-bottom: 10px;
+      border-radius: 999px;
+      color: #17314d;
+      background: var(--blue-soft);
+      font-weight: 900;
+      font-size: 0.86rem;
+    }
+
+    .tagline.green {
+      color: #11553f;
+      background: var(--green-soft);
+    }
+
+    .tagline.red {
+      color: #78343a;
+      background: var(--red-soft);
+    }
+
+    .tagline.yellow {
+      color: #6f4b00;
+      background: var(--yellow-soft);
+    }
+
+    .tagline.violet {
+      color: #3d367d;
+      background: var(--violet-soft);
+    }
+
+    .sensor-strip {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin: 16px 0 14px;
+      padding: 12px;
+      width: fit-content;
+      border-radius: 999px;
+      background: #263238;
+    }
+
+    .led {
+      width: 28px;
+      height: 28px;
+      border-radius: 999px;
+      background: #fff8dd;
+      box-shadow: inset 0 0 0 2px rgba(0, 0, 0, 0.08);
+    }
+
+    .led.on {
+      background: #151a1f;
+      box-shadow: 0 0 0 3px rgba(247, 201, 72, 0.45), inset 0 0 0 2px rgba(255, 255, 255, 0.08);
+    }
+
+    .led.warn {
+      background: #f0b429;
+      box-shadow: 0 0 0 3px rgba(240, 180, 41, 0.35);
+    }
+
+    .observe-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 14px;
+      margin-top: 20px;
+    }
+
+    .observe {
+      min-height: 150px;
+      padding: 16px;
+      border-radius: var(--radius);
+      background: #fff;
+      border: 1px solid rgba(23, 33, 41, 0.09);
+    }
+
+    .observe b {
+      display: block;
+      margin-bottom: 8px;
+      font-size: 1.02rem;
+    }
+
+    .observe p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 0.96rem;
+    }
+
+    .same-state {
+      margin-top: 34px;
+      padding: 28px;
+      border-radius: var(--radius);
+      background: #172129;
+      color: #f8fbff;
+      overflow: hidden;
+    }
+
+    .same-state h3 {
+      margin: 0 0 10px;
+      font-size: clamp(1.55rem, 3vw, 2.35rem);
+      line-height: 1.2;
+      letter-spacing: 0;
+    }
+
+    .same-state p {
+      margin: 0;
+      color: rgba(248, 251, 255, 0.78);
+    }
+
+    .same-grid {
+      margin-top: 22px;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+      gap: 18px;
+    }
+
+    .same-item {
+      min-height: 230px;
+      padding: 18px;
+      border-radius: var(--radius);
+      background: rgba(255, 255, 255, 0.09);
+      border: 1px solid rgba(255, 255, 255, 0.13);
+    }
+
+    .same-item .sensor-strip {
+      margin-top: 10px;
+      margin-bottom: 14px;
+    }
+
+    .same-item b {
+      display: block;
+      margin-bottom: 8px;
+      color: #fff;
+      font-size: 1.06rem;
+    }
+
+    .same-item ul {
+      margin: 0;
+      padding-left: 20px;
+      color: rgba(248, 251, 255, 0.78);
+    }
+
+    .same-item li + li {
+      margin-top: 8px;
+    }
+
+    .formula {
+      margin: 14px 0 18px;
+      padding: 16px 18px;
+      border-radius: var(--radius);
+      background: #172129;
+      color: #fff7d7;
+      font-weight: 900;
+      font-size: clamp(1.15rem, 2.4vw, 1.7rem);
+      line-height: 1.3;
+      text-align: center;
+    }
+
+    .parameter-meta {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px;
+      margin-top: 8px;
+    }
+
+    .mini-box {
+      min-height: 132px;
+      padding: 14px;
+      border-radius: var(--radius);
+      background: rgba(255, 255, 255, 0.76);
+      border: 1px solid rgba(23, 33, 41, 0.08);
+    }
+
+    .mini-box b {
+      display: block;
+      margin-bottom: 6px;
+      color: #1f2d38;
+    }
+
+    .mini-box p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 0.94rem;
+      line-height: 1.55;
+    }
+
+    .experiment {
+      scroll-margin-top: calc(var(--nav-h) + 18px);
+      margin-top: 32px;
+      display: grid;
+      grid-template-columns: minmax(310px, 0.82fr) minmax(0, 1.18fr);
+      gap: 24px;
+      align-items: stretch;
+      padding: 24px;
+      border-radius: var(--radius);
+      background: #182530;
+      color: #f8fbff;
+    }
+
+    .experiment h3 {
+      margin: 0 0 12px;
+      font-size: clamp(1.55rem, 3vw, 2.4rem);
+      line-height: 1.18;
+      letter-spacing: 0;
+    }
+
+    .experiment p {
+      margin: 0 0 16px;
+      color: rgba(248, 251, 255, 0.78);
+    }
+
+    .controls {
+      display: grid;
+      gap: 16px;
+      margin-top: 18px;
+    }
+
+    .control {
+      display: grid;
+      grid-template-columns: 76px minmax(0, 1fr) 54px;
+      gap: 12px;
+      align-items: center;
+      min-height: 42px;
+    }
+
+    .control label {
+      font-weight: 900;
+      color: #fff;
+    }
+
+    input[type="range"] {
+      width: 100%;
+      accent-color: var(--yellow);
+    }
+
+    .value {
+      padding: 5px 8px;
+      border-radius: 999px;
+      text-align: center;
+      background: rgba(255, 255, 255, 0.13);
+      font-weight: 900;
+      color: #fff;
+    }
+
+    .demo-panel {
+      min-width: 0;
+      display: grid;
+      gap: 14px;
+    }
+
+    .canvas-wrap {
+      border-radius: var(--radius);
+      background: #fffdf8;
+      padding: 12px;
+      border: 1px solid rgba(255, 255, 255, 0.18);
+    }
+
+    #demoCanvas {
+      width: 100%;
+      height: auto;
+      border-radius: 6px;
+      background: #fffdf8;
+    }
+
+    .readout {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px;
+    }
+
+    .readout div {
+      min-height: 112px;
+      padding: 14px;
+      border-radius: var(--radius);
+      background: rgba(255, 255, 255, 0.1);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+    }
+
+    .readout b {
+      display: block;
+      margin-bottom: 6px;
+      color: #fff7d7;
+    }
+
+    .readout span {
+      color: rgba(248, 251, 255, 0.78);
+      font-size: 0.95rem;
+    }
+
+    .state-meaning {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 14px;
+      margin-bottom: 28px;
+    }
+
+    .meaning-box {
+      min-height: 190px;
+      padding: 18px;
+      border-radius: var(--radius);
+      background: rgba(255, 255, 255, 0.08);
+      border: 1px solid rgba(255, 255, 255, 0.14);
+    }
+
+    .meaning-box b {
+      display: block;
+      margin-bottom: 8px;
+      color: #fff;
+      font-size: 1.08rem;
+    }
+
+    .meaning-box p {
+      margin: 0;
+      color: rgba(248, 251, 255, 0.76);
+    }
+
+    .state-facts {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 10px;
+      margin-top: 12px;
+    }
+
+    .state-fact {
+      min-height: 110px;
+      padding: 12px;
+      border-radius: var(--radius);
+      background: rgba(255, 255, 255, 0.08);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+    }
+
+    .state-fact b {
+      display: block;
+      margin-bottom: 4px;
+      color: #fff7d7;
+      font-size: 0.92rem;
+    }
+
+    .state-fact span {
+      color: rgba(248, 251, 255, 0.78);
+      font-size: 0.92rem;
+      line-height: 1.5;
+    }
+
+    .flow-map {
+      margin-top: 32px;
+      padding: 24px;
+      border-radius: var(--radius);
+      background: rgba(255, 255, 255, 0.08);
+      border: 1px solid rgba(255, 255, 255, 0.14);
+    }
+
+    .flow-map h3 {
+      margin: 0 0 16px;
+      font-size: clamp(1.45rem, 2.8vw, 2.2rem);
+      line-height: 1.2;
+      letter-spacing: 0;
+    }
+
+    .flow-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      align-items: center;
+    }
+
+    .flow-node {
+      min-height: 54px;
+      padding: 10px 13px;
+      display: grid;
+      place-items: center;
+      border-radius: var(--radius);
+      background: #fffdf8;
+      color: #172129;
+      font-weight: 900;
+      text-align: center;
+    }
+
+    .flow-arrow {
+      color: #ffe398;
+      font-weight: 900;
+      font-size: 1.4rem;
+    }
+
+    .flow-note {
+      margin: 16px 0 0;
+      color: rgba(248, 251, 255, 0.78);
+    }
+
+    .mission-board {
+      display: grid;
+      grid-template-columns: minmax(280px, 0.8fr) minmax(0, 1.2fr);
+      gap: 18px;
+      align-items: start;
+    }
+
+    .mission-map,
+    .mission-flow,
+    .mission-roles {
+      border-radius: var(--radius);
+      background: #fff;
+      border: 1px solid rgba(23, 33, 41, 0.08);
+      box-shadow: 0 8px 22px rgba(23, 33, 41, 0.06);
+    }
+
+    .mission-map {
+      overflow: hidden;
+    }
+
+    .mission-map img {
+      display: block;
+      width: 100%;
+      aspect-ratio: 4 / 3;
+      object-fit: cover;
+      background: #f3ead8;
+    }
+
+    .mission-map figcaption {
+      padding: 14px 16px 16px;
+      color: var(--muted);
+      font-size: 0.95rem;
+      line-height: 1.55;
+    }
+
+    .mission-map b,
+    .mission-flow b,
+    .mission-roles b {
+      display: block;
+      margin-bottom: 8px;
+      color: #1f2d38;
+      font-size: 1.08rem;
+    }
+
+    .mission-flow {
+      margin: 0;
+      padding: 14px;
+      list-style: none;
+      counter-reset: mission;
+    }
+
+    .mission-flow li {
+      counter-increment: mission;
+      display: grid;
+      grid-template-columns: 38px minmax(0, 1fr);
+      gap: 12px;
+      padding: 14px 0;
+      border-bottom: 1px solid rgba(23, 33, 41, 0.08);
+    }
+
+    .mission-flow li:last-child {
+      border-bottom: 0;
+    }
+
+    .mission-flow li::before {
+      content: counter(mission);
+      width: 34px;
+      height: 34px;
+      display: grid;
+      place-items: center;
+      border-radius: 50%;
+      background: #172129;
+      color: #fff5d7;
+      font-weight: 900;
+    }
+
+    .mission-flow p,
+    .mission-map figcaption p,
+    .mission-roles p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 0.96rem;
+      line-height: 1.6;
+    }
+
+    .mission-roles {
+      margin-top: 16px;
+      padding: 18px;
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 14px;
+    }
+
+    .mission-roles div {
+      min-height: 108px;
+      padding: 14px;
+      border-radius: calc(var(--radius) - 4px);
+      background: #fffaf0;
+      border: 1px solid rgba(222, 168, 80, 0.24);
+    }
+
+    .closing {
+      padding: 54px 0;
+      background: #172129;
+      color: #f8fbff;
+      text-align: center;
+    }
+
+    .closing .wrap {
+      max-width: 900px;
+    }
+
+    .closing h2 {
+      margin: 0 auto 14px;
+    }
+
+    .closing p {
+      margin: 0 auto;
+      color: rgba(248, 251, 255, 0.78);
+      font-size: 1.08rem;
+    }
+
+    @media (max-width: 940px) {
+      .section-head,
+      .big-idea,
+      .lesson-card,
+      .lesson-card.reverse,
+      .parameter-card,
+      .parameter-card.reverse,
+      .state-card,
+      .state-card.reverse,
+      .experiment {
+        grid-template-columns: 1fr;
+      }
+
+      .lesson-card.reverse .media-frame,
+      .parameter-card.reverse .media-frame,
+      .state-card.reverse .media-frame {
+        order: 0;
+      }
+
+      .chapter-row,
+      .observe-grid,
+      .state-meaning,
+      .mission-board,
+      .mission-roles {
+        grid-template-columns: 1fr;
+      }
+
+      .same-grid,
+      .parameter-meta,
+      .readout,
+      .state-facts {
+        grid-template-columns: 1fr;
+      }
+
+      .hero {
+        min-height: 720px;
+        background:
+          linear-gradient(180deg, rgba(20, 29, 37, 0.88), rgba(20, 29, 37, 0.66) 58%, rgba(20, 29, 37, 0.34)),
+          url("assets/line-step-hero-simple.jpg") center / cover no-repeat;
+      }
+    }
+
+    @media (max-width: 680px) {
+      :root {
+        --nav-h: 60px;
+      }
+
+      .nav-inner {
+        width: min(100% - 22px, var(--max));
+      }
+
+      .brand span {
+        max-width: 132px;
+      }
+
+      .nav-links a {
+        font-size: 0.86rem;
+        padding-inline: 10px;
+      }
+
+      .hero-inner,
+      .wrap {
+        width: min(100% - 22px, var(--max));
+      }
+
+      .hero-inner {
+        padding: 48px 0 54px;
+      }
+
+      .section {
+        padding: 58px 0;
+      }
+
+      .lesson-card,
+      .parameter-card,
+      .state-card,
+      .same-state,
+      .experiment,
+      .flow-map,
+      .mission-flow,
+      .mission-roles {
+        padding: 14px;
+      }
+
+      .control {
+        grid-template-columns: 62px minmax(0, 1fr) 46px;
+        gap: 8px;
+      }
+
+      .led {
+        width: 23px;
+        height: 23px;
+      }
+
+      .flow-row {
+        display: grid;
+        grid-template-columns: 1fr;
+      }
+
+      .flow-arrow {
+        text-align: center;
+        transform: rotate(90deg);
+      }
+    }
+
+    @media (max-width: 480px) {
+      .brand span:not(.brand-mark) {
+        display: none;
+      }
+
+      .nav-links {
+        flex: 1 1 auto;
+        justify-content: space-between;
+        gap: 2px;
+      }
+
+      .nav-links a {
+        padding-inline: 7px;
+        font-size: 0.82rem;
+      }
+    }
+  </style>
+</head>
+<body>
+  <nav class="site-nav" aria-label="页面导航">
+    <div class="nav-inner">
+      <a class="brand" href="#top">
+        <span class="brand-mark" aria-hidden="true"></span>
+        <span>巡线小车逐步课</span>
+      </a>
+      <div class="nav-links">
+        <a href="#sensor">怎么看线</a>
+        <a href="#pid">PID 与速度</a>
+        <a href="#state">状态机</a>
+        <a href="#story">串起来</a>
+      </div>
+    </div>
+  </nav>
+
+  <header id="top" class="hero">
+    <div class="hero-inner">
+      <div class="hero-copy">
+        <span class="kicker">给小朋友的一页一页巡线课</span>
+        <h1>巡线小车只学三件事</h1>
+        <p>先看懂小车怎么知道自己歪了，再看 PID 和速度怎么改变它的动作，最后用状态机说明小车什么时候能跑、什么时候必须停。</p>
+        <div class="chapter-row" aria-label="三件事总览">
+          <div class="chapter-chip">
+            <b>第一件事：看线</b>
+            <span>红外灯看到黑线的位置，给小车一个“我偏了”的线索。</span>
+          </div>
+          <div class="chapter-chip">
+            <b>第二件事：纠偏</b>
+            <span>Kp、Ki、Kd 和速度档位一起决定小车是稳、慢、摆，还是冲出去。</span>
+          </div>
+          <div class="chapter-chip">
+            <b>第三件事：守规矩</b>
+            <span>状态机像课堂纪律表，让小车按顺序准备、调参、运行和保护。</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <section id="sensor" class="section">
+      <div class="wrap">
+        <div class="section-head">
+          <div>
+            <span class="eyebrow">第一件事：小车怎么知道自己歪了</span>
+            <h2>红外灯不是在“看完整地图”，它只是在车头下面摸到黑线在哪里。</h2>
+          </div>
+          <p>总的讲法：白地反光多，黑线反光少。哪几个灯碰到黑线，就像小车脚底传来一个小消息：黑线在中间、偏左、偏右，或者突然变复杂了。</p>
+        </div>
+
+        <div class="big-idea">
+          <div class="media-frame">
+            <img src="assets/line-step-sensor-centered.jpg" alt="红外巡线小车居中压在线上">
+          </div>
+          <div class="big-copy">
+            <span class="tagline">先讲总：灯态是线索</span>
+            <h3>小车真正拿到的不是“我很聪明”，而是一串灯的亮灭。</h3>
+            <p>把红外灯排成一排放在车头下面。黑线压在中间，通常就是中间的灯最容易发现黑线；黑线跑到右边，右边的灯更容易发现；跑到左边也一样。</p>
+            <ul class="simple-list">
+              <li><span class="dot">1</span><span>先看现在是哪几个灯发现黑线。</span></li>
+              <li><span class="dot green">2</span><span>再判断这说明车头偏向哪边。</span></li>
+              <li><span class="dot red">3</span><span>最后把“偏差”交给 PID 去纠正。</span></li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="lesson-stack">
+          <article class="lesson-card">
+            <div class="media-frame">
+              <img src="assets/line-step-sensor-centered.jpg" alt="小车正在线中间">
+            </div>
+            <div class="lesson-copy">
+              <span class="tagline green">分开讲 1：车在中间</span>
+              <h3>中间灯看见黑线，小车大多可以继续往前。</h3>
+              <div class="sensor-strip" aria-label="中间灯看见黑线">
+                <span class="led"></span><span class="led"></span><span class="led on"></span><span class="led"></span><span class="led"></span>
+              </div>
+              <p>这时候不用大转弯，只要轻轻修正。孩子可以把它想成走在操场跑道中间，脚还踩在正确的路上。</p>
+              <ul class="simple-list">
+                <li><span class="dot green">看</span><span>黑线在传感器正中间。</span></li>
+                <li><span class="dot green">想</span><span>偏差很小，小车不用紧张。</span></li>
+                <li><span class="dot green">做</span><span>继续前进，只做小幅纠偏。</span></li>
+              </ul>
+            </div>
+          </article>
+
+          <article class="lesson-card reverse">
+            <div class="media-frame">
+              <img src="assets/line-step-sensor-left.jpg" alt="小车偏到黑线左边">
+            </div>
+            <div class="lesson-copy">
+              <span class="tagline yellow">分开讲 2：车在黑线左边</span>
+              <h3>黑线落到右边灯下面，说明车身跑到了线的左边。</h3>
+              <div class="sensor-strip" aria-label="右侧灯看见黑线">
+                <span class="led"></span><span class="led"></span><span class="led"></span><span class="led on"></span><span class="led"></span>
+              </div>
+              <p>从小车的视角看，线在右边，就要往右找回去。注意这里讲的是“车头传感器的位置”，不是整辆车的所有部位。</p>
+              <ul class="simple-list">
+                <li><span class="dot yellow">看</span><span>黑线靠近右侧灯。</span></li>
+                <li><span class="dot yellow">想</span><span>车头在黑线左边，偏差向右。</span></li>
+                <li><span class="dot yellow">做</span><span>给一个向右的纠偏动作。</span></li>
+              </ul>
+            </div>
+          </article>
+
+          <article class="lesson-card">
+            <div class="media-frame">
+              <img src="assets/line-step-sensor-right.jpg" alt="小车偏到黑线右边">
+            </div>
+            <div class="lesson-copy">
+              <span class="tagline red">分开讲 3：车在黑线右边</span>
+              <h3>黑线落到左边灯下面，说明车头需要往左找回去。</h3>
+              <div class="sensor-strip" aria-label="左侧灯看见黑线">
+                <span class="led"></span><span class="led on"></span><span class="led"></span><span class="led"></span><span class="led"></span>
+              </div>
+              <p>这和上一页正好相反。巡线的第一个难点，是让孩子把“灯在哪边亮”和“车该往哪边修”对应起来。</p>
+              <ul class="simple-list">
+                <li><span class="dot red">看</span><span>黑线靠近左侧灯。</span></li>
+                <li><span class="dot red">想</span><span>车头在黑线右边，偏差向左。</span></li>
+                <li><span class="dot red">做</span><span>给一个向左的纠偏动作。</span></li>
+              </ul>
+            </div>
+          </article>
+
+          <article class="lesson-card reverse">
+            <div class="media-frame">
+              <img src="assets/line-step-same-lights-angle.jpg" alt="小车斜着进入弯道时传感器仍可能压在线上">
+            </div>
+            <div class="lesson-copy">
+              <span class="tagline violet">分开讲 4：灯态相近，不代表姿态相同</span>
+              <h3>同样是中间灯看见黑线，小车可能很正，也可能已经斜了。</h3>
+              <div class="sensor-strip" aria-label="同样中间灯看见黑线">
+                <span class="led"></span><span class="led"></span><span class="led on"></span><span class="led"></span><span class="led"></span>
+              </div>
+              <p>这是很有价值的一点：红外灯只看车头下面那一小条，不会告诉你车身角度、弯道方向和下一秒会发生什么。所以优秀的巡线不能只看这一刻的灯态，还要看上一刻怎么变过来。</p>
+            </div>
+          </article>
+        </div>
+
+        <div class="same-state">
+          <h3>看到同一种灯态，先别急着说答案</h3>
+          <p>把下面这些灯态当成观察题。请孩子先猜：小车可能站在黑线的哪里？车头可能正着还是斜着？脚下的路可能是直线、弯道、交叉口，还是黑线变宽了？这里不公布标准答案，因为真实巡线要靠灯态、上一刻的变化和路面一起判断。</p>
+          <div class="same-grid">
+            <div class="same-item">
+              <b>灯态 1：只有中间灯看见黑线</b>
+              <div class="sensor-strip" aria-label="只有中间灯看见黑线">
+                <span class="led"></span><span class="led"></span><span class="led on"></span><span class="led"></span><span class="led"></span>
+              </div>
+              <ul>
+                <li>它一定是正正地骑在线上吗？</li>
+                <li>有没有可能车头已经有一点斜？</li>
+                <li>如果前面马上进弯，这个灯态还说明同一件事吗？</li>
+              </ul>
+            </div>
+            <div class="same-item">
+              <b>灯态 2：左中两个灯看见黑线</b>
+              <div class="sensor-strip" aria-label="左中两个灯看见黑线">
+                <span class="led"></span><span class="led on"></span><span class="led on"></span><span class="led"></span><span class="led"></span>
+              </div>
+              <ul>
+                <li>小车可能偏到了哪一边？</li>
+                <li>也可能是黑线变宽了吗？</li>
+                <li>如果上一刻只有中间灯亮，现在多了左中灯，变化方向是什么？</li>
+              </ul>
+            </div>
+            <div class="same-item">
+              <b>灯态 3：右中两个灯看见黑线</b>
+              <div class="sensor-strip" aria-label="右中两个灯看见黑线">
+                <span class="led"></span><span class="led"></span><span class="led on"></span><span class="led on"></span><span class="led"></span>
+              </div>
+              <ul>
+                <li>它和灯态 2 是不是左右相反？</li>
+                <li>车头可能已经在回正，还是正在偏出去？</li>
+                <li>如果这是弯道入口，小车和路线可能是什么关系？</li>
+              </ul>
+            </div>
+            <div class="same-item">
+              <b>灯态 4：最左边灯看见黑线</b>
+              <div class="sensor-strip" aria-label="最左边灯看见黑线">
+                <span class="led on"></span><span class="led"></span><span class="led"></span><span class="led"></span><span class="led"></span>
+              </div>
+              <ul>
+                <li>这是普通偏离，还是快要丢线？</li>
+                <li>车头可能压在线边上，还是已经斜着扫过黑线？</li>
+                <li>如果下一刻所有灯都灭了，刚才发生了什么？</li>
+              </ul>
+            </div>
+            <div class="same-item">
+              <b>灯态 5：最右边灯看见黑线</b>
+              <div class="sensor-strip" aria-label="最右边灯看见黑线">
+                <span class="led"></span><span class="led"></span><span class="led"></span><span class="led"></span><span class="led on"></span>
+              </div>
+              <ul>
+                <li>它和灯态 4 有什么相同和不同？</li>
+                <li>如果小车速度很快，这个灯态危险在哪里？</li>
+                <li>看到边上的灯亮，要不要马上做很大的动作？为什么？</li>
+              </ul>
+            </div>
+            <div class="same-item">
+              <b>灯态 6：中间一大片灯都看见黑线</b>
+              <div class="sensor-strip" aria-label="中间一大片灯都看见黑线">
+                <span class="led"></span><span class="led on"></span><span class="led on"></span><span class="led on"></span><span class="led"></span>
+              </div>
+              <ul>
+                <li>这可能是一条很宽的黑线吗？</li>
+                <li>可能到了路口、起点线或终点线吗？</li>
+                <li>如果只看这一刻，小车会不会误以为自己很安全？</li>
+              </ul>
+            </div>
+            <div class="same-item">
+              <b>灯态 7：五个灯都看见黑线</b>
+              <div class="sensor-strip" aria-label="五个灯都看见黑线">
+                <span class="led on"></span><span class="led on"></span><span class="led on"></span><span class="led on"></span><span class="led on"></span>
+              </div>
+              <ul>
+                <li>它可能是大片黑色区域、十字路口，还是终点标记？</li>
+                <li>这种时候还适合只用“往左或往右”来判断吗？</li>
+                <li>要不要请状态机来帮忙确认现在到了哪一关？</li>
+              </ul>
+            </div>
+            <div class="same-item">
+              <b>灯态 8：五个灯都没看见黑线</b>
+              <div class="sensor-strip" aria-label="五个灯都没看见黑线">
+                <span class="led"></span><span class="led"></span><span class="led"></span><span class="led"></span><span class="led"></span>
+              </div>
+              <ul>
+                <li>小车真的跑到白地上了吗？</li>
+                <li>有没有可能黑线刚好在两个读数之间溜过去了？</li>
+                <li>这时最该回忆上一刻哪个灯看见过黑线？</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+
+        <div class="observe-grid" aria-label="读线观察方法">
+          <div class="observe">
+            <b>先问灯</b>
+            <p>哪几个灯发现黑线？中间、左边、右边，还是很多灯一起发现？</p>
+          </div>
+          <div class="observe">
+            <b>再问变化</b>
+            <p>上一刻在中间，这一刻跑到右边，说明偏差正在变大。</p>
+          </div>
+          <div class="observe">
+            <b>最后问路</b>
+            <p>是直线、弯道、路口，还是黑线太宽？同一个灯态在不同路面里意义会变。</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="pid" class="section alt">
+      <div class="wrap">
+        <div class="section-head">
+          <div>
+            <span class="eyebrow">第二件事：PID 和速度档位</span>
+            <h2>PID 不是一团公式，而是三个脾气不同的纠偏助手，再加一个速度难度旋钮。</h2>
+          </div>
+          <p>先总后分：Kp 看现在偏了多少，Ki 看过去一直欠了多少，Kd 看变化是不是太猛，速度档位决定小车还有多少时间把错误改回来。</p>
+        </div>
+
+        <div class="parameter-stack">
+          <article class="parameter-card">
+            <div class="media-frame">
+              <img src="assets/line-step-kp.jpg" alt="Kp 让小车按当前偏差立刻转回来">
+            </div>
+            <div class="parameter-copy">
+              <span class="tagline">Kp：现在偏多少，就立刻拉多少</span>
+              <h3>Kp 是最容易看见效果的参数。</h3>
+              <div class="formula">纠偏力 = Kp × 当前偏差</div>
+              <p>Kp 太小，小车会慢吞吞地漂出去；Kp 太大，小车会一看见偏差就猛打方向，容易左右摆。</p>
+              <div class="parameter-meta">
+                <div class="mini-box">
+                  <b>比喻一：排队走歪了</b>
+                  <p>你离队伍中线越远，老师提醒你挪回来的幅度越大；离得很近，就轻轻挪一点。</p>
+                </div>
+                <div class="mini-box">
+                  <b>比喻二：倒水到刻度线</b>
+                  <p>离刻度还远时可以倒快一点，快到刻度就要小一点。Kp 只盯着“现在还差多少”。</p>
+                </div>
+              </div>
+            </div>
+          </article>
+
+          <article class="parameter-card reverse">
+            <div class="media-frame">
+              <img src="assets/line-step-ki.jpg" alt="Ki 处理长期偏一边的问题">
+            </div>
+            <div class="parameter-copy">
+              <span class="tagline green">Ki：一直偏一边，就慢慢补回来</span>
+              <h3>Ki 像一本小账本，记住小车老是欠在哪里。</h3>
+              <div class="formula">补偿力 = Ki × 偏差累计</div>
+              <p>Ki 对“总是偏一边”的车很有用，比如轮子不一样有力、地面有坡、车架有点歪。但 Ki 太多会把旧账补过头，让小车越修越摆。</p>
+              <div class="parameter-meta">
+                <div class="mini-box">
+                  <b>比喻一：左轮总是弱一点</b>
+                  <p>如果小车每次都差一点点偏右，Ki 像小本子把这些小偏差记下来，最后多补一点。</p>
+                </div>
+                <div class="mini-box">
+                  <b>比喻二：擦黑板漏边角</b>
+                  <p>每次都漏同一个小角落，说明不是偶然。Ki 会发现“老是差这里”，然后专门多修一点。</p>
+                </div>
+              </div>
+            </div>
+          </article>
+
+          <article class="parameter-card">
+            <div class="media-frame">
+              <img src="assets/line-step-kd.jpg" alt="Kd 减少小车突然左右摇摆">
+            </div>
+            <div class="parameter-copy">
+              <span class="tagline violet">Kd：发现变化太快，就提前稳一下</span>
+              <h3>Kd 不只是看偏了没有，还看偏差变快了没有。</h3>
+              <div class="formula">减摇力 = Kd × 偏差变化</div>
+              <p>Kd 像一个提醒：“你刚刚往左冲得太快，别一下子又冲到右边。”它常常用来减少摆尾和过冲。</p>
+              <div class="parameter-meta">
+                <div class="mini-box">
+                  <b>比喻一：自行车靠近路沿</b>
+                  <p>只是有点靠近不用慌；如果正在很快冲向路沿，就要提前把车把回正。</p>
+                </div>
+                <div class="mini-box">
+                  <b>比喻二：推门快撞墙</b>
+                  <p>门还没碰到墙，但如果速度很快，你会提前放轻手。Kd 就是防止冲过头。</p>
+                </div>
+              </div>
+            </div>
+          </article>
+
+          <article class="parameter-card reverse">
+            <div class="media-frame">
+              <img src="assets/line-step-speed-gears.jpg" alt="速度档位越高小车越难稳定巡线">
+            </div>
+            <div class="parameter-copy">
+              <span class="tagline red">速度档位：越快，越考验 PID</span>
+              <h3>速度不是 PID 的一个字母，但它会改变所有参数的难度。</h3>
+              <div class="formula">反应余量 = 可看距离 ÷ 速度</div>
+              <p>同样的传感器、同样的 Kp、Ki、Kd，低速可能很稳，高速可能突然丢线。因为小车跑得越快，留给传感器看、PID 算、底盘转的时间越少。</p>
+              <div class="parameter-meta">
+                <div class="mini-box">
+                  <b>比喻一：慢跑和冲刺过弯</b>
+                  <p>慢跑时看到弯道还能调整脚步；冲太快时，即使看见弯也可能已经冲过头。</p>
+                </div>
+                <div class="mini-box">
+                  <b>比喻二：滑板车转弯</b>
+                  <p>慢一点很容易转过去；太快时方向打对了也可能滑出弯道。速度决定留给纠偏的时间。</p>
+                </div>
+              </div>
+            </div>
+          </article>
+        </div>
+
+        <div class="experiment" aria-label="PID 与速度互动实验台">
+          <div>
+            <span class="tagline yellow">PID 里的可观察实验</span>
+            <h3>调参不是猜数字，是让表现变得能看见。</h3>
+            <p>拖动下面四个滑杆，观察小车轨迹是慢慢回中、左右摇摆，还是高速冲过头。这个小实验放在 PID 章节里，因为它就是调参方法本身。</p>
+            <div class="controls">
+              <div class="control">
+                <label for="kpRange">Kp</label>
+                <input id="kpRange" type="range" min="20" max="100" value="56">
+                <span id="kpValue" class="value">56</span>
+              </div>
+              <div class="control">
+                <label for="kiRange">Ki</label>
+                <input id="kiRange" type="range" min="0" max="70" value="12">
+                <span id="kiValue" class="value">12</span>
+              </div>
+              <div class="control">
+                <label for="kdRange">Kd</label>
+                <input id="kdRange" type="range" min="0" max="80" value="34">
+                <span id="kdValue" class="value">34</span>
+              </div>
+              <div class="control">
+                <label for="speedRange">速度</label>
+                <input id="speedRange" type="range" min="1" max="3" step="1" value="2">
+                <span id="speedValue" class="value">2档</span>
+              </div>
+            </div>
+          </div>
+          <div class="demo-panel">
+            <div class="canvas-wrap">
+              <canvas id="demoCanvas" width="920" height="430" aria-label="PID 与速度影响示意动画"></canvas>
+            </div>
+            <div class="readout">
+              <div>
+                <b>观察重点</b>
+                <span id="observationText">轨迹会先靠近黑线，再出现轻微摆动，适合讲“稳住以后再加速”。</span>
+              </div>
+              <div>
+                <b>课堂顺序</b>
+                <span id="suggestionText">低速开始，先调 Kp，再加一点 Kd，最后少量加入 Ki 和提高速度档位。</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="observe-grid" aria-label="调参观察方法">
+          <div class="observe">
+            <b>第一步：低速跑稳</b>
+            <p>先用低速，让小车有时间犯错和改错。低速都不稳，高速只会更难。</p>
+          </div>
+          <div class="observe">
+            <b>第二步：一次只动一个参数</b>
+            <p>每次只调 Kp、Ki、Kd 或速度中的一个，孩子才能看出是谁改变了表现。</p>
+          </div>
+          <div class="observe">
+            <b>第三步：用表现说话</b>
+            <p>看三个现象：能不能回中、会不会摆动、弯道会不会丢线。</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="state" class="section dark">
+      <div class="wrap">
+        <div class="section-head">
+          <div>
+            <span class="eyebrow">第三件事：经典红外巡线小车状态机</span>
+            <h2>状态机不是另一个零件，而是一张“现在允许做什么”的规矩表。</h2>
+          </div>
+          <p>给小朋友讲，可以把状态机拆成三个字：状态，就是小车现在在哪一关；机，就是按规则自动换关；状态机，就是把每一关能做什么、遇到情况去哪一关写清楚。</p>
+        </div>
+
+        <div class="state-meaning" aria-label="状态机三个字的含义">
+          <div class="meaning-box">
+            <b>状态</b>
+            <p>小车现在的身份。比如“正在调参”“准备好了”“正在跑”“出错保护”。身份不同，允许做的事不同。</p>
+          </div>
+          <div class="meaning-box">
+            <b>机</b>
+            <p>不是多出来的机器，而是一套会自动执行的规则。满足条件，就从一个状态换到另一个状态。</p>
+          </div>
+          <div class="meaning-box">
+            <b>状态机</b>
+            <p>把状态和换状态的规则放在一起。它让小车像遵守交通灯一样，该停就停，该准备就准备，该跑才跑。</p>
+          </div>
+        </div>
+
+        <div class="state-stack">
+          <article class="state-card">
+            <div class="media-frame">
+              <img src="assets/line-step-state-boot.jpg" alt="小车开机自检状态">
+            </div>
+            <div class="state-copy">
+              <span class="tagline yellow">状态 1：BOOT_INIT 开机自检</span>
+              <h3>先醒过来，检查眼睛和轮子能不能用。</h3>
+              <p>小车刚通电时，不应该立刻冲出去。它要先初始化传感器、底盘和参数，就像上课前先检查书、本子和铅笔。</p>
+              <div class="state-facts">
+                <div class="state-fact"><b>干什么</b><span>启动硬件，读取参数，准备通信。</span></div>
+                <div class="state-fact"><b>能去哪里</b><span>一切正常就进入安全待命。</span></div>
+                <div class="state-fact"><b>不能做什么</b><span>不能自动巡线，不能让轮子随便转。</span></div>
+              </div>
+            </div>
+          </article>
+
+          <article class="state-card reverse">
+            <div class="media-frame">
+              <img src="assets/line-step-state-idle.jpg" alt="小车安全待命状态">
+            </div>
+            <div class="state-copy">
+              <span class="tagline green">状态 2：SAFE_IDLE 安全待命</span>
+              <h3>车停着，但已经能听懂下一步命令。</h3>
+              <p>这是最安全的普通状态。小车不动，等待老师或同学选择调参、手动测试，或者准备自动巡线。</p>
+              <div class="state-facts">
+                <div class="state-fact"><b>干什么</b><span>电机停止，等待命令。</span></div>
+                <div class="state-fact"><b>能去哪里</b><span>可以去调参、手动测试、自动预备。</span></div>
+                <div class="state-fact"><b>不能做什么</b><span>没有开始命令时不能自己跑。</span></div>
+              </div>
+            </div>
+          </article>
+
+          <article class="state-card">
+            <div class="media-frame">
+              <img src="assets/line-step-state-tuning.jpg" alt="小车停止时调参数">
+            </div>
+            <div class="state-copy">
+              <span class="tagline">状态 3：PARAM_TUNING 调参</span>
+              <h3>改 Kp、Ki、Kd 和速度档位时，车要先停住。</h3>
+              <p>调参就像换鞋带，不能边跑边换。进入这个状态后，小车接受参数修改，但底盘保持安全停止。</p>
+              <div class="state-facts">
+                <div class="state-fact"><b>干什么</b><span>允许修改并保存巡线参数。</span></div>
+                <div class="state-fact"><b>能去哪里</b><span>调完回到安全待命。</span></div>
+                <div class="state-fact"><b>不能做什么</b><span>不能一边高速巡线一边改参数。</span></div>
+              </div>
+            </div>
+          </article>
+
+          <article class="state-card reverse">
+            <div class="media-frame">
+              <img src="assets/line-step-state-manual.jpg" alt="小车手动测试状态">
+            </div>
+            <div class="state-copy">
+              <span class="tagline violet">状态 4：MANUAL_TEST 手动测试</span>
+              <h3>短短动一下，确认轮子和底盘听指挥。</h3>
+              <p>手动测试不是正式巡线。它像体育课前试跑两步，用来检查左轮、右轮、前进、转弯是不是正常。</p>
+              <div class="state-facts">
+                <div class="state-fact"><b>干什么</b><span>执行短时间、低风险的运动测试。</span></div>
+                <div class="state-fact"><b>能去哪里</b><span>测试结束或超时后回安全待命。</span></div>
+                <div class="state-fact"><b>不能做什么</b><span>不能把它当自动巡线长期运行。</span></div>
+              </div>
+            </div>
+          </article>
+
+          <article class="state-card">
+            <div class="media-frame">
+              <img src="assets/line-step-state-armed.jpg" alt="小车自动预备状态">
+            </div>
+            <div class="state-copy">
+              <span class="tagline yellow">状态 5：AUTO_ARMED 自动预备</span>
+              <h3>像站在起跑线，已经准备好，但还没有冲出去。</h3>
+              <p>这个状态说明小车已经允许自动巡线，但还在等真正的开始命令。它能避免误触碰一下就突然启动。</p>
+              <div class="state-facts">
+                <div class="state-fact"><b>干什么</b><span>检查准备条件，等待开始。</span></div>
+                <div class="state-fact"><b>能去哪里</b><span>收到开始命令后进入自动运行。</span></div>
+                <div class="state-fact"><b>不能做什么</b><span>没开始前不能让 PID 驱动车轮。</span></div>
+              </div>
+            </div>
+          </article>
+
+          <article class="state-card reverse">
+            <div class="media-frame">
+              <img src="assets/line-step-state-running.jpg" alt="小车自动巡线运行">
+            </div>
+            <div class="state-copy">
+              <span class="tagline green">状态 6：AUTO_RUNNING 自动巡线</span>
+              <h3>这才是正式比赛：看线、算纠偏、驱动车轮。</h3>
+              <p>自动运行时，小车不断读红外灯，得到偏差，再让 PID 产生纠偏动作。速度档位越高，这个循环越紧张。</p>
+              <div class="state-facts">
+                <div class="state-fact"><b>干什么</b><span>持续读线，持续纠偏，持续前进。</span></div>
+                <div class="state-fact"><b>能去哪里</b><span>收到停止回待命，丢线或超时进故障保护。</span></div>
+                <div class="state-fact"><b>不能做什么</b><span>不能忽略传感器异常继续冲。</span></div>
+              </div>
+            </div>
+          </article>
+
+          <article class="state-card">
+            <div class="media-frame">
+              <img src="assets/line-step-state-fault.jpg" alt="小车故障保护状态">
+            </div>
+            <div class="state-copy">
+              <span class="tagline red">状态 7：FAULT 故障保护</span>
+              <h3>看不见线、传感器超时，先停下来等人处理。</h3>
+              <p>故障保护不是失败，而是聪明地保护自己。小车不确定路在哪里时，停下来比继续乱跑更好。</p>
+              <div class="state-facts">
+                <div class="state-fact"><b>干什么</b><span>立即停车，记录或显示出错原因。</span></div>
+                <div class="state-fact"><b>能去哪里</b><span>排除问题并清除故障后回安全待命。</span></div>
+                <div class="state-fact"><b>不能做什么</b><span>不能带着故障直接恢复高速运行。</span></div>
+              </div>
+            </div>
+          </article>
+        </div>
+
+        <div class="flow-map" aria-label="状态之间的关系">
+          <h3>状态之间怎么连起来</h3>
+          <div class="flow-row">
+            <div class="flow-node">BOOT_INIT<br>开机自检</div>
+            <div class="flow-arrow">→</div>
+            <div class="flow-node">SAFE_IDLE<br>安全待命</div>
+            <div class="flow-arrow">→</div>
+            <div class="flow-node">PARAM_TUNING<br>调参</div>
+            <div class="flow-arrow">→</div>
+            <div class="flow-node">SAFE_IDLE<br>回到待命</div>
+          </div>
+          <div class="flow-row" style="margin-top: 12px;">
+            <div class="flow-node">SAFE_IDLE<br>安全待命</div>
+            <div class="flow-arrow">→</div>
+            <div class="flow-node">AUTO_ARMED<br>自动预备</div>
+            <div class="flow-arrow">→</div>
+            <div class="flow-node">AUTO_RUNNING<br>自动巡线</div>
+            <div class="flow-arrow">→</div>
+            <div class="flow-node">SAFE_IDLE<br>停止后待命</div>
+          </div>
+          <div class="flow-row" style="margin-top: 12px;">
+            <div class="flow-node">任意危险情况</div>
+            <div class="flow-arrow">→</div>
+            <div class="flow-node">FAULT<br>故障保护</div>
+            <div class="flow-arrow">→</div>
+            <div class="flow-node">SAFE_IDLE<br>清除后待命</div>
+          </div>
+          <p class="flow-note">给孩子的说法：不是所有按钮什么时候都能按。先待命，才能调参或预备；先预备，才能正式跑；出错了，大家都先回到“停车检查”。</p>
+        </div>
+      </div>
+    </section>
+
+    <section id="story" class="section warm">
+      <div class="wrap">
+        <div class="section-head">
+          <div>
+            <span class="eyebrow">最后总结：把一次巡线任务跑完整</span>
+            <h2>在这张目标地图上，小车要按顺序完成一圈又一圈的巡线。</h2>
+          </div>
+          <p>本阶段的目标不是迷宫，也不是分岔选择，而是一圈贴在地上的黑色胶带。孩子只要跟着这条不规则圆环理解：红外灯怎么看线，PID 怎么纠偏，速度为什么要配合，状态机怎样保证每一步按规矩发生。</p>
+        </div>
+
+        <div class="mission-board">
+          <figure class="mission-map">
+            <img src="assets/line-step-goal-map.svg" alt="巡线目标地图：地面上一圈不规则黑色胶带路线">
+            <figcaption>
+              <b>任务参照图</b>
+              <p>小车从起点压上黑线，沿着这圈手工贴出的不规则圆环前进。路线有直道、缓弯和更急一点的弯，但没有岔路；完成标准可以约定为连续稳定跑完 2 圈，中途不冲出线、不长时间丢线。</p>
+            </figcaption>
+          </figure>
+
+          <ol class="mission-flow" aria-label="巡线任务执行流程">
+            <li>
+              <div>
+                <b>组装小车</b>
+                <p>先装好底盘、电机、轮子、控制板、电池和红外巡线传感器。传感器要在车头下方看得见黑线，左右位置尽量对称。</p>
+              </div>
+            </li>
+            <li>
+              <div>
+                <b>离线测试</b>
+                <p>不上赛道先检查轮子方向、左右电机是否一致、红外灯看到黑线和白地时有没有变化。这里发现的问题先修掉，不急着跑。</p>
+              </div>
+            </li>
+            <li>
+              <div>
+                <b>上电自检</b>
+                <p>打开电源后，小车进入 INIT / SELF_CHECK：确认电池、传感器、通信和底盘都正常。通过后停车待命，进入 SAFE_IDLE。</p>
+              </div>
+            </li>
+            <li>
+              <div>
+                <b>预备开测</b>
+                <p>老师或同学发送预备开测指令，小车进入 AUTO_ARMED。它已经准备巡线，但还不立刻冲出去，先等待短暂倒计时或正式开始命令。</p>
+              </div>
+            </li>
+            <li>
+              <div>
+                <b>延迟启动</b>
+                <p>倒计时结束后进入 AUTO_RUNNING。速度先用低档或中低档，让小车有时间读灯态、算偏差、转方向。</p>
+              </div>
+            </li>
+            <li>
+              <div>
+                <b>直道跟线</b>
+                <p>直道上，黑线大多在传感器中间。小车如果轻微偏左或偏右，PID 会让左右轮产生一点速度差，把车头慢慢拉回黑线中央。</p>
+              </div>
+            </li>
+            <li>
+              <div>
+                <b>弯道纠偏</b>
+                <p>进入弯道时，灯态会更快地向一侧移动。Kp 负责马上转向，Kd 抑制甩头，Ki 只慢慢处理一直偏一边的问题；速度太高时，先降速再追求更快。</p>
+              </div>
+            </li>
+            <li>
+              <div>
+                <b>丢线保护</b>
+                <p>如果所有灯都看不到线，或灯态乱跳太久，状态机不让小车继续乱跑，而是停车进入 FAULT。清除问题后再回到 SAFE_IDLE 重新准备。</p>
+              </div>
+            </li>
+            <li>
+              <div>
+                <b>完成收车</b>
+                <p>连续稳定跑完约定的 2 圈后，老师发送结束指令，小车减速停车，回到 SAFE_IDLE。最后关闭电源，检查轮子、传感器和胶带路线有没有松动。</p>
+              </div>
+            </li>
+          </ol>
+        </div>
+
+        <div class="mission-roles" aria-label="四类知识在任务中的作用">
+          <div>
+            <b>巡线原理</b>
+            <p>红外灯只给出车头下方的黑白线索，用灯态判断黑线相对车身的位置。</p>
+          </div>
+          <div>
+            <b>PID</b>
+            <p>把“偏了多少、偏了多久、偏得快不快”变成左右轮的纠偏动作。</p>
+          </div>
+          <div>
+            <b>速度</b>
+            <p>速度越快，纠偏窗口越短；先稳再快，弯道必要时降速。</p>
+          </div>
+          <div>
+            <b>状态机</b>
+            <p>规定什么时候能调参、能预备、能运行、必须停车保护和完成待命。</p>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="closing">
+    <div class="wrap">
+      <h2>最后只记这一条任务线</h2>
+      <p>先组装和测试，再上电自检；预备后延迟启动；运行中用红外灯发现偏差，用 PID 和速度把偏差修回来；完成约定圈数后停车待命，最后安全下电。</p>
+    </div>
+  </footer>
+
+  <script>
+    const sliders = {
+      kp: document.getElementById("kpRange"),
+      ki: document.getElementById("kiRange"),
+      kd: document.getElementById("kdRange"),
+      speed: document.getElementById("speedRange")
+    };
+    const values = {
+      kp: document.getElementById("kpValue"),
+      ki: document.getElementById("kiValue"),
+      kd: document.getElementById("kdValue"),
+      speed: document.getElementById("speedValue")
+    };
+    const observationText = document.getElementById("observationText");
+    const suggestionText = document.getElementById("suggestionText");
+    const canvas = document.getElementById("demoCanvas");
+    const ctx = canvas.getContext("2d");
+
+    function drawRoundedRect(x, y, w, h, r) {
+      ctx.beginPath();
+      ctx.moveTo(x + r, y);
+      ctx.arcTo(x + w, y, x + w, y + h, r);
+      ctx.arcTo(x + w, y + h, x, y + h, r);
+      ctx.arcTo(x, y + h, x, y, r);
+      ctx.arcTo(x, y, x + w, y, r);
+      ctx.closePath();
+    }
+
+    function drawCar(x, y, angle, color) {
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.rotate(angle);
+
+      ctx.fillStyle = "rgba(23, 33, 41, 0.18)";
+      drawRoundedRect(-52, 34, 104, 18, 9);
+      ctx.fill();
+
+      ctx.fillStyle = "#263238";
+      drawRoundedRect(-56, -26, 112, 60, 8);
+      ctx.fill();
+
+      ctx.fillStyle = color;
+      drawRoundedRect(-38, -17, 76, 38, 6);
+      ctx.fill();
+
+      ctx.fillStyle = "#151a1f";
+      drawRoundedRect(-64, -20, 18, 42, 8);
+      ctx.fill();
+      drawRoundedRect(46, -20, 18, 42, 8);
+      ctx.fill();
+
+      ctx.fillStyle = "#f7c948";
+      drawRoundedRect(-42, -38, 84, 13, 6);
+      ctx.fill();
+
+      for (let i = 0; i < 5; i += 1) {
+        ctx.beginPath();
+        ctx.fillStyle = i === 2 ? "#151a1f" : "#fff7d7";
+        ctx.arc(-28 + i * 14, -31, 4.4, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      ctx.restore();
+    }
+
+    function drawDemo() {
+      const kp = Number(sliders.kp.value);
+      const ki = Number(sliders.ki.value);
+      const kd = Number(sliders.kd.value);
+      const speed = Number(sliders.speed.value);
+
+      values.kp.textContent = kp;
+      values.ki.textContent = ki;
+      values.kd.textContent = kd;
+      values.speed.textContent = `${speed}档`;
+
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      ctx.fillStyle = "#fffdf8";
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      ctx.strokeStyle = "#d9e1e7";
+      ctx.lineWidth = 1;
+      for (let x = 70; x < canvas.width; x += 70) {
+        ctx.beginPath();
+        ctx.moveTo(x, 0);
+        ctx.lineTo(x, canvas.height);
+        ctx.stroke();
+      }
+
+      const centerY = canvas.height / 2;
+      ctx.strokeStyle = "#151a1f";
+      ctx.lineWidth = 22;
+      ctx.lineCap = "round";
+      ctx.beginPath();
+      for (let x = 48; x <= canvas.width - 48; x += 18) {
+        const curve = Math.sin((x - 70) / 120) * 36 + Math.sin(x / 260) * 18;
+        if (x === 48) ctx.moveTo(x, centerY + curve);
+        else ctx.lineTo(x, centerY + curve);
+      }
+      ctx.stroke();
+
+      const kpEffect = (kp - 56) / 44;
+      const kiEffect = ki / 70;
+      const kdEffect = kd / 80;
+      const speedEffect = (speed - 1) / 2;
+      const wobble = Math.max(0.12, 0.92 + kpEffect * 0.9 + speedEffect * 0.85 - kdEffect * 0.95);
+      const drift = (kiEffect - 0.24) * 28;
+      const settle = Math.max(0.34, 1.12 - kp / 115);
+
+      ctx.strokeStyle = "rgba(45, 108, 223, 0.72)";
+      ctx.lineWidth = 5;
+      ctx.lineCap = "round";
+      ctx.beginPath();
+      let lastX = 0;
+      let lastY = 0;
+      for (let i = 0; i <= 90; i += 1) {
+        const t = i / 90;
+        const x = 64 + t * (canvas.width - 128);
+        const lineY = centerY + Math.sin((x - 70) / 120) * 36 + Math.sin(x / 260) * 18;
+        const errorTrail = Math.sin(t * Math.PI * (2.2 + speedEffect * 1.6)) * 58 * wobble * Math.exp(-t * settle);
+        const y = lineY + errorTrail + drift;
+        if (i === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+        lastX = x;
+        lastY = y;
+      }
+      ctx.stroke();
+
+      ctx.strokeStyle = "rgba(214, 69, 80, 0.4)";
+      ctx.lineWidth = 3;
+      ctx.setLineDash([8, 10]);
+      ctx.beginPath();
+      ctx.moveTo(74, centerY - 95);
+      ctx.bezierCurveTo(280, centerY - 40, 460, centerY + 70, canvas.width - 80, centerY - 42);
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      const angle = Math.max(-0.5, Math.min(0.5, (lastY - centerY) / 160));
+      drawCar(lastX - 70, lastY, angle, speed === 3 ? "#ef476f" : speed === 2 ? "#2d6cdf" : "#128a63");
+
+      ctx.fillStyle = "#172129";
+      ctx.font = "700 20px -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif";
+      ctx.fillText("蓝线是小车走出来的轨迹", 34, 40);
+      ctx.fillStyle = "#52616b";
+      ctx.font = "500 16px -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif";
+      ctx.fillText("目标不是最快，而是能回中、少摆动、不丢线", 34, 66);
+
+      const risk = kpEffect * 1.1 + speedEffect * 1.1 + kiEffect * 0.45 - kdEffect * 0.85;
+      if (risk > 0.72) {
+        observationText.textContent = "轨迹摆动明显，像小车一边纠正一边冲过头。先降速度，或稍微减小 Kp，再加一点 Kd。";
+        suggestionText.textContent = "这组适合演示“跑得快不等于跑得好”。让孩子看蓝线左右摆的幅度。";
+      } else if (kp < 38) {
+        observationText.textContent = "轨迹回中比较慢，像看见线却不太愿意转弯。可以一点点增加 Kp。";
+        suggestionText.textContent = "这组适合演示“Kp 太小”。让孩子看小车是不是总在外侧慢慢漂。";
+      } else if (ki > 52) {
+        observationText.textContent = "轨迹后半段容易补过头，像旧账记太多，最后用力过猛。可以减少 Ki。";
+        suggestionText.textContent = "这组适合演示“Ki 不能急着加”。先解决明显长期偏一边，再少量加入。";
+      } else {
+        observationText.textContent = "轨迹能靠近黑线，摆动不大，适合讲“稳住以后再加速”。";
+        suggestionText.textContent = "低速开始，先调 Kp，再加一点 Kd，最后少量加入 Ki 和提高速度档位。";
+      }
+    }
+
+    Object.values(sliders).forEach((slider) => {
+      slider.addEventListener("input", drawDemo);
+    });
+
+    drawDemo();
+  </script>
+</body>
+</html>

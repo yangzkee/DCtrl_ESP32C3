@@ -1,0 +1,530 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>DCar-Liner 策略登记表</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --ink: #18202f;
+      --muted: #687184;
+      --line: #d9dee8;
+      --soft: #f5f7fb;
+      --green: #147a5c;
+      --blue: #245c9f;
+      --red: #a33434;
+      --amber: #8a620e;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      color: var(--ink);
+      background: #ffffff;
+      line-height: 1.62;
+    }
+
+    header {
+      padding: 42px 22px 30px;
+      border-bottom: 1px solid var(--line);
+      background: linear-gradient(180deg, #f7f9fc 0%, #ffffff 100%);
+    }
+
+    main {
+      width: min(1120px, calc(100% - 32px));
+      margin: 0 auto;
+      padding: 26px 0 48px;
+    }
+
+    .head-inner {
+      width: min(1120px, calc(100% - 32px));
+      margin: 0 auto;
+    }
+
+    h1 {
+      margin: 0 0 10px;
+      font-size: clamp(28px, 4vw, 44px);
+      letter-spacing: 0;
+    }
+
+    h2 {
+      margin: 34px 0 12px;
+      font-size: 24px;
+      letter-spacing: 0;
+    }
+
+    h3 {
+      margin: 22px 0 8px;
+      font-size: 18px;
+      letter-spacing: 0;
+    }
+
+    p {
+      margin: 8px 0;
+    }
+
+    code {
+      padding: 2px 5px;
+      border-radius: 4px;
+      background: #eef1f6;
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 0.94em;
+    }
+
+    .subtitle {
+      max-width: 920px;
+      color: var(--muted);
+      font-size: 17px;
+    }
+
+    .meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 16px;
+    }
+
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      min-height: 30px;
+      padding: 4px 10px;
+      border: 1px solid var(--line);
+      border-radius: 4px;
+      background: #ffffff;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .notice {
+      padding: 14px 16px;
+      border-left: 4px solid var(--blue);
+      background: var(--soft);
+    }
+
+    .strategy {
+      padding: 18px 0;
+      border-top: 1px solid var(--line);
+    }
+
+    .strategy:first-of-type {
+      border-top: 0;
+    }
+
+    .strategy-title {
+      display: flex;
+      align-items: baseline;
+      gap: 10px;
+      margin: 0 0 8px;
+    }
+
+    .sid {
+      color: var(--blue);
+      font-weight: 700;
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    }
+
+    .tag {
+      display: inline-flex;
+      align-items: center;
+      margin-right: 6px;
+      margin-top: 6px;
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-size: 12px;
+      font-weight: 700;
+      color: #ffffff;
+    }
+
+    .tag.motion { background: var(--green); }
+    .tag.safety { background: var(--red); }
+    .tag.debug { background: var(--blue); }
+    .tag.product { background: var(--amber); }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 12px 0 6px;
+      font-size: 14px;
+    }
+
+    th,
+    td {
+      vertical-align: top;
+      padding: 10px 8px;
+      border: 1px solid var(--line);
+      text-align: left;
+    }
+
+    th {
+      width: 132px;
+      background: #f2f5f9;
+      color: #384255;
+      font-weight: 700;
+    }
+
+    ul {
+      margin: 8px 0 8px 22px;
+      padding: 0;
+    }
+
+    li {
+      margin: 4px 0;
+    }
+
+    .toc {
+      columns: 2;
+      column-gap: 42px;
+      padding: 0;
+      list-style: none;
+    }
+
+    .toc li {
+      break-inside: avoid;
+      margin: 6px 0;
+    }
+
+    .toc a {
+      color: var(--blue);
+      text-decoration: none;
+    }
+
+    .toc a:hover {
+      text-decoration: underline;
+    }
+
+    footer {
+      margin-top: 34px;
+      padding-top: 18px;
+      border-top: 1px solid var(--line);
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    @media (max-width: 720px) {
+      .toc {
+        columns: 1;
+      }
+
+      table,
+      tbody,
+      tr,
+      th,
+      td {
+        display: block;
+        width: 100%;
+      }
+
+      th {
+        border-bottom: 0;
+      }
+
+      td {
+        border-top: 0;
+      }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="head-inner">
+      <h1>DCar-Liner 策略登记表</h1>
+      <p class="subtitle">本页集中记录 DCar-Liner 车端、小程序、调试和安全策略。新增策略、修改策略或废弃策略时，优先更新本页，再同步代码、系统说明和模块契约。</p>
+      <div class="meta">
+        <span class="pill">当前版本：2026-06-06</span>
+        <span class="pill">主目标：ESP32-C3 实车循线</span>
+        <span class="pill">主调试入口：微信小程序 BLE</span>
+        <span class="pill">维护规则：策略变化必须登记</span>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <section class="notice">
+      <strong>登记规则：</strong>
+      策略不是临时参数。任何影响小车行为、无线调试、安全停车、传感器解释、速度/转向映射、小程序控制流程或 OTA 维护流程的决定，都必须在本页留下编号、触发条件、当前实现和验证方法。
+    </section>
+
+    <h2>目录</h2>
+    <ul class="toc">
+      <li><a href="#S01">S01 目标地图边界</a></li>
+      <li><a href="#S02">S02 模块边界</a></li>
+      <li><a href="#S03">S03 板级迁移</a></li>
+      <li><a href="#S04">S04 循线传感器读取</a></li>
+      <li><a href="#S05">S05 底盘速度协议</a></li>
+      <li><a href="#S06">S06 连续发送运动指令</a></li>
+      <li><a href="#S07">S07 运动状态机</a></li>
+      <li><a href="#S08">S08 停车调参</a></li>
+      <li><a href="#S09">S09 BLE 优先调试</a></li>
+      <li><a href="#S10">S10 Wi-Fi 后备与 OTA</a></li>
+      <li><a href="#S11">S11 小程序最小参数面板</a></li>
+      <li><a href="#S12">S12 小程序循线控制流程</a></li>
+      <li><a href="#S13">S13 自动循线速度档位</a></li>
+      <li><a href="#S14">S14 偏离中心自适应降速</a></li>
+      <li><a href="#S15">S15 偏离中心自适应转向</a></li>
+      <li><a href="#S16">S16 PID 参数范围</a></li>
+      <li><a href="#S17">S17 丢线找回</a></li>
+      <li><a href="#S18">S18 传感器异常</a></li>
+      <li><a href="#S19">S19 BLE 断连安全</a></li>
+      <li><a href="#S20">S20 手动测试</a></li>
+      <li><a href="#S21">S21 遥测观察</a></li>
+      <li><a href="#S22">S22 蓝牙设备选择与命名</a></li>
+    </ul>
+
+    <h2>策略清单</h2>
+
+    <article class="strategy" id="S01">
+      <h3 class="strategy-title"><span class="sid">S01</span>目标地图边界</h3>
+      <span class="tag motion">运动</span><span class="tag product">范围</span>
+      <table>
+        <tr><th>策略</th><td>当前只处理一圈手工贴出的黑色胶带循线，不处理迷宫、岔路、路线记忆和路口选路。</td></tr>
+        <tr><th>触发条件</th><td>进入 <code>AUTO_RUNNING</code> 后，传感器持续读取黑线并执行闭环纠偏。</td></tr>
+        <tr><th>实现位置</th><td><code>components/control/line_trace_policy.c</code></td></tr>
+        <tr><th>验证方法</th><td>一键自检后开始循线，小车应沿单圈黑线运行；遇到岔路类场景不承诺选路。</td></tr>
+      </table>
+    </article>
+
+    <article class="strategy" id="S02">
+      <h3 class="strategy-title"><span class="sid">S02</span>模块边界</h3>
+      <span class="tag motion">运动</span><span class="tag product">架构</span>
+      <table>
+        <tr><th>策略</th><td><code>line_trace_policy</code> 只做策略判断；UART、BLE、NVS、板级引脚留在外层模块。</td></tr>
+        <tr><th>触发条件</th><td>任何新的循线、找线、速度或转向策略，都先判断是否属于 policy 层。</td></tr>
+        <tr><th>实现位置</th><td><code>components/control/line_trace_policy.c</code>、<code>components/control/line_trace_controller.c</code></td></tr>
+        <tr><th>验证方法</th><td>S3/C3 双目标构建通过；策略修改不需要改 UART 或 BLE 代码。</td></tr>
+      </table>
+    </article>
+
+    <article class="strategy" id="S03">
+      <h3 class="strategy-title"><span class="sid">S03</span>板级迁移</h3>
+      <span class="tag product">兼容</span>
+      <table>
+        <tr><th>策略</th><td>ESP32-S3 与 ESP32-C3 差异集中在板级 profile，不把芯片差异写进业务策略。</td></tr>
+        <tr><th>当前 C3 接线</th><td>底盘 <code>UART1 TX GPIO4 / RX GPIO5 / 115200</code>；循线模块 <code>UART0 TX GPIO2 / RX GPIO3 / 115200</code>；C3 控制台使用 USB Serial/JTAG。</td></tr>
+        <tr><th>实现位置</th><td><code>components/board_profile</code>、<code>sdkconfig.esp32c3</code></td></tr>
+        <tr><th>验证方法</th><td><code>./scripts/idf.sh -B build-esp32c3 -DSDKCONFIG=sdkconfig.esp32c3 build</code></td></tr>
+      </table>
+    </article>
+
+    <article class="strategy" id="S04">
+      <h3 class="strategy-title"><span class="sid">S04</span>循线传感器读取</h3>
+      <span class="tag motion">传感器</span>
+      <table>
+        <tr><th>策略</th><td>八路循线模块使用 USART 数字模式。发送 <code>$0,0,1#</code>，解析 <code>$D,x1:...,x8:...#</code>。黑线为 <code>0</code>，白底为 <code>1</code>，固件默认把 <code>0</code> 转成有效线 bit。</td></tr>
+        <tr><th>取舍</th><td>不用 IO 直读，因为占用 8 个 GPIO；I2C 暂不采用，因为只能读数字值且地址/寄存器细节未稳定。</td></tr>
+        <tr><th>实现位置</th><td><code>components/line_sensor/line_sensor_uart.c</code></td></tr>
+        <tr><th>验证方法</th><td>改变黑线/白线，telemetry 中 <code>line.bits</code>、<code>line.offset</code>、<code>line_uart.last_frame</code> 应变化。</td></tr>
+      </table>
+    </article>
+
+    <article class="strategy" id="S05">
+      <h3 class="strategy-title"><span class="sid">S05</span>底盘速度协议</h3>
+      <span class="tag motion">底盘</span>
+      <table>
+        <tr><th>策略</th><td>底盘使用 DFLink <code>Motion_Velocity</code>。<code>linear_mm_s</code> 是直接发给底盘的协议速度值，不保证等同真实速度。<code>angular_mdeg_s</code> 表示单条速度指令中的 Z 角度增量，不是持续角速度。</td></tr>
+        <tr><th>实测事实</th><td><code>Vx=0.5</code> 是已验证的舒适手动/诊断速度；自动循线最高档当前为 <code>Vx=1.0</code>。</td></tr>
+        <tr><th>实现位置</th><td><code>components/chassis/chassis_uart.c</code>、<code>components/chassis/include/chassis_uart.h</code></td></tr>
+        <tr><th>验证方法</th><td>BLE 发送 <code>Cxyz500rx</code>，检查底盘回传和校验。</td></tr>
+      </table>
+    </article>
+
+    <article class="strategy" id="S06">
+      <h3 class="strategy-title"><span class="sid">S06</span>连续发送运动指令</h3>
+      <span class="tag motion">底盘</span>
+      <table>
+        <tr><th>策略</th><td>底盘需要持续收到速度指令才会持续运动。控制任务按 <code>control.loop_period_ms</code> 周期持续发送当前运动命令。</td></tr>
+        <tr><th>默认周期</th><td><code>20 ms</code></td></tr>
+        <tr><th>实现位置</th><td><code>components/control/line_trace_controller.c</code></td></tr>
+        <tr><th>验证方法</th><td>进入 <code>AUTO_RUNNING</code> 后，telemetry 中 <code>motion</code> 应持续更新，底盘连续运动。</td></tr>
+      </table>
+    </article>
+
+    <article class="strategy" id="S07">
+      <h3 class="strategy-title"><span class="sid">S07</span>运动状态机</h3>
+      <span class="tag safety">安全</span><span class="tag motion">状态</span>
+      <table>
+        <tr><th>策略</th><td>车端主运动状态包括 <code>BOOT_INIT</code>、<code>SAFE_IDLE</code>、<code>PARAM_TUNING</code>、<code>MANUAL_TEST</code>、<code>AUTO_ARMED</code>、<code>AUTO_RUNNING</code>、<code>FAULT</code>，OTA 维护状态单独隔离。</td></tr>
+        <tr><th>触发条件</th><td>调参、手动测试、自动准备、自动运行、故障和 OTA 必须通过状态转换控制。</td></tr>
+        <tr><th>实现位置</th><td><code>components/vehicle_state/vehicle_state.c</code></td></tr>
+        <tr><th>验证方法</th><td>通过 BLE JSON 发送 <code>arm_auto</code>、<code>start_auto</code>、<code>stop</code>，观察 telemetry 的 <code>vehicle.motion_state</code>。</td></tr>
+      </table>
+    </article>
+
+    <article class="strategy" id="S08">
+      <h3 class="strategy-title"><span class="sid">S08</span>停车调参</h3>
+      <span class="tag safety">安全</span><span class="tag debug">调试</span>
+      <table>
+        <tr><th>策略</th><td>无线调参采用停车调参。只读 telemetry 不影响车运行；写参数、保存参数、恢复默认必须进入 <code>PARAM_TUNING</code>。</td></tr>
+        <tr><th>小程序例外</th><td>小程序短帧 <code>S&lt;kp&gt;,&lt;ki&gt;,&lt;kd&gt;,&lt;gear&gt;</code> 是现场简化调参入口，仅用于 PID 和档位。</td></tr>
+        <tr><th>实现位置</th><td><code>components/debug_protocol/debug_protocol.c</code>、<code>components/debug_server/debug_server_ble.c</code></td></tr>
+        <tr><th>验证方法</th><td><code>AUTO_RUNNING</code> 中 JSON <code>set_param</code> 应返回需要进入调参的错误。</td></tr>
+      </table>
+    </article>
+
+    <article class="strategy" id="S09">
+      <h3 class="strategy-title"><span class="sid">S09</span>BLE 优先调试</h3>
+      <span class="tag debug">无线</span>
+      <table>
+        <tr><th>策略</th><td>BLE Low Energy 是默认调试和小程序参数通道。Wi-Fi 默认关闭以降低功耗和供电压力。</td></tr>
+        <tr><th>协议</th><td>小程序短帧使用 <code>G</code>、<code>S...</code>、<code>N...</code>；长诊断使用 BLE JSON/分包。</td></tr>
+        <tr><th>实现位置</th><td><code>components/debug_server/debug_server_ble.c</code>、<code>wechat-miniprogram/</code></td></tr>
+        <tr><th>验证方法</th><td>使用微信小程序或 <code>tools/ble_debug_tester.swift</code> 读取 <code>G</code>。</td></tr>
+      </table>
+    </article>
+
+    <article class="strategy" id="S10">
+      <h3 class="strategy-title"><span class="sid">S10</span>Wi-Fi 后备与 OTA</h3>
+      <span class="tag debug">维护</span><span class="tag safety">安全</span>
+      <table>
+        <tr><th>策略</th><td>Wi-Fi SoftAP 只作为后备诊断和无线烧录入口。通过 BLE <code>W1</code> 手动开启。OTA 进入维护状态、强制停车、写入另一个 OTA app 槽并重启。</td></tr>
+        <tr><th>边界</th><td>小程序改 PID/速度档只写 NVS，不碰 OTA 分区；OTA 是固件维护流程。</td></tr>
+        <tr><th>实现位置</th><td><code>components/debug_server</code>、<code>tools/ota_upload.py</code>、<code>partitions_ota_4mb.csv</code></td></tr>
+        <tr><th>验证方法</th><td>BLE 发送 <code>W1</code>，电脑连接热点后访问 <code>/api/ota/status</code>。</td></tr>
+      </table>
+    </article>
+
+    <article class="strategy" id="S11">
+      <h3 class="strategy-title"><span class="sid">S11</span>小程序最小参数面板</h3>
+      <span class="tag product">小程序</span>
+      <table>
+        <tr><th>策略</th><td>小程序只做少量运动参数：<code>Kp</code>、<code>Ki</code>、<code>Kd</code>、<code>speed.gear</code>。复杂完整参数表保留给 Wi-Fi/JSON 后备诊断。</td></tr>
+        <tr><th>范围</th><td><code>Kp 7000-11000</code>、<code>Ki 0-300</code>、<code>Kd 0-3000</code>、档位 <code>1-3</code>。</td></tr>
+        <tr><th>实现位置</th><td><code>wechat-miniprogram/pages/params/</code>、<code>components/debug_server/debug_server_ble.c</code></td></tr>
+        <tr><th>验证方法</th><td>发送并保存后立即读回 <code>G</code>，显示值必须与发送值一致。</td></tr>
+      </table>
+    </article>
+
+    <article class="strategy" id="S12">
+      <h3 class="strategy-title"><span class="sid">S12</span>小程序循线控制流程</h3>
+      <span class="tag product">小程序</span><span class="tag safety">安全</span>
+      <table>
+        <tr><th>策略</th><td>小程序循线面板使用三框流式状态图。<code>一键自检</code> 依次读取 telemetry、必要时清理故障、执行 <code>arm_auto</code>；只有进入 <code>AUTO_ARMED</code> 后才允许 <code>开始循线</code>。</td></tr>
+        <tr><th>运行</th><td><code>开始循线</code> 发送 <code>start_auto</code>，<code>停止</code> 发送 <code>stop</code>。</td></tr>
+        <tr><th>实现位置</th><td><code>wechat-miniprogram/pages/params/params.js</code>、<code>params.wxml</code>、<code>params.wxss</code></td></tr>
+        <tr><th>验证方法</th><td>真机调试中观察状态图从自检滑到可开始，再进入正在循线。</td></tr>
+      </table>
+    </article>
+
+    <article class="strategy" id="S13">
+      <h3 class="strategy-title"><span class="sid">S13</span>自动循线速度档位</h3>
+      <span class="tag motion">速度</span>
+      <table>
+        <tr><th>策略</th><td>自动循线三档为最大协议线速度：一档 <code>250 mm/s</code> / <code>Vx=0.25</code>，二档 <code>600 mm/s</code> / <code>Vx=0.6</code>，三档 <code>1000 mm/s</code> / <code>Vx=1.0</code>。</td></tr>
+        <tr><th>Z 上限</th><td>一档 <code>8000 mdeg/cmd</code>，二档 <code>10000 mdeg/cmd</code>，三档 <code>10000 mdeg/cmd</code>。</td></tr>
+        <tr><th>实现位置</th><td><code>components/control/line_trace_controller.c</code></td></tr>
+        <tr><th>验证方法</th><td>切换小程序档位并开始循线，telemetry 中 <code>motion.linear_mm_s</code> 不超过对应档位上限。</td></tr>
+      </table>
+    </article>
+
+    <article class="strategy" id="S14">
+      <h3 class="strategy-title"><span class="sid">S14</span>偏离中心自适应降速</h3>
+      <span class="tag motion">速度</span>
+      <table>
+        <tr><th>策略</th><td>有效线越偏离中心 <code>x4/x5</code>，线速度越低。变化使用先慢后快的二次曲线，不是线性降速。</td></tr>
+        <tr><th>当前曲线</th><td>中心附近保持档位最大速度；最外侧 offset 保留约 <code>45%</code> 档位速度。</td></tr>
+        <tr><th>实现位置</th><td><code>adaptive_linear_speed_mm_s()</code> in <code>components/control/line_trace_policy.c</code></td></tr>
+        <tr><th>验证方法</th><td>观察 telemetry：offset 小时 <code>motion.linear_mm_s</code> 接近档位上限；offset 大时逐步下降。</td></tr>
+      </table>
+    </article>
+
+    <article class="strategy" id="S15">
+      <h3 class="strategy-title"><span class="sid">S15</span>偏离中心自适应转向</h3>
+      <span class="tag motion">转向</span>
+      <table>
+        <tr><th>策略</th><td>偏离中心越多，Z 角度增量越大。变化同样使用先慢后快的二次曲线。</td></tr>
+        <tr><th>当前曲线</th><td>将 raw offset 归一化为 <code>-1..1</code>，再平方并保留方向后进入 PID。小偏离轻微修正，大偏离快速增大转向。</td></tr>
+        <tr><th>实现位置</th><td><code>curved_error_from_offset()</code> in <code>components/control/line_trace_policy.c</code></td></tr>
+        <tr><th>验证方法</th><td>观察 telemetry：小 offset 时 <code>motion.angular_mdeg_s</code> 不应立即撞限幅；大 offset 时应明显增大。</td></tr>
+      </table>
+    </article>
+
+    <article class="strategy" id="S16">
+      <h3 class="strategy-title"><span class="sid">S16</span>PID 参数范围</h3>
+      <span class="tag motion">PID</span><span class="tag product">小程序</span>
+      <table>
+        <tr><th>策略</th><td>小程序只开放紧范围 PID，避免现场误输入导致车辆行为不可控。</td></tr>
+        <tr><th>范围</th><td><code>Kp 7000-11000</code>，<code>Ki 0-300</code>，<code>Kd 0-3000</code>。当前默认 <code>Kp=9000</code>、<code>Ki=0</code>、<code>Kd=0</code>。</td></tr>
+        <tr><th>实现位置</th><td><code>components/param_store/param_store.c</code>、<code>wechat-miniprogram/pages/params/params.js</code></td></tr>
+        <tr><th>验证方法</th><td>错误参数应弹出红色错误提示；合法参数保存后能读回。</td></tr>
+      </table>
+    </article>
+
+    <article class="strategy" id="S17">
+      <h3 class="strategy-title"><span class="sid">S17</span>丢线找回</h3>
+      <span class="tag motion">找线</span><span class="tag safety">安全</span>
+      <table>
+        <tr><th>策略</th><td>自动运行中全丢线不立即停车。线速度置零，Z 使用安全找线增量，并朝最后一次正常循线转向的反方向找回。</td></tr>
+        <tr><th>当前值</th><td><code>linear_mm_s=0</code>，<code>search turn=6000 mdeg/cmd</code>。</td></tr>
+        <tr><th>实现位置</th><td><code>search_turn_mdeg()</code>、<code>set_search_output()</code> in <code>components/control/line_trace_policy.c</code></td></tr>
+        <tr><th>验证方法</th><td>故意让线偏出传感器，telemetry 应显示 <code>LINE_LOST</code>、线速度为 0，并向反方向寻找。</td></tr>
+      </table>
+    </article>
+
+    <article class="strategy" id="S18">
+      <h3 class="strategy-title"><span class="sid">S18</span>传感器异常</h3>
+      <span class="tag motion">传感器</span><span class="tag safety">安全</span>
+      <table>
+        <tr><th>策略</th><td>自动运行中短暂传感器超时或解析异常不直接进入 <code>FAULT</code>，而是执行零线速度安全找线。非自动运行状态保持停车。</td></tr>
+        <tr><th>边界</th><td>底盘发送失败仍进入 <code>CHASSIS_SEND_FAILED</code>。</td></tr>
+        <tr><th>实现位置</th><td><code>components/control/line_trace_policy.c</code>、<code>components/control/line_trace_controller.c</code></td></tr>
+        <tr><th>验证方法</th><td>运行中制造短暂传感器异常，车辆不应直接故障冲停；持续无法恢复时按后续安全策略扩展。</td></tr>
+      </table>
+    </article>
+
+    <article class="strategy" id="S19">
+      <h3 class="strategy-title"><span class="sid">S19</span>BLE 断连安全</h3>
+      <span class="tag safety">安全</span><span class="tag debug">无线</span>
+      <table>
+        <tr><th>策略</th><td>当前唯一需要立即停车的无线安全条件是 BLE 连接中断。若处于 <code>AUTO_ARMED</code>、<code>AUTO_RUNNING</code> 或 <code>MANUAL_TEST</code>，立刻发送底盘停止并回到 <code>SAFE_IDLE</code>。</td></tr>
+        <tr><th>实现位置</th><td><code>components/debug_server/debug_server_ble.c</code></td></tr>
+        <tr><th>验证方法</th><td>自动运行中断开 BLE，车辆应立即停车，telemetry 下次读取显示 <code>SAFE_IDLE</code>。</td></tr>
+      </table>
+    </article>
+
+    <article class="strategy" id="S20">
+      <h3 class="strategy-title"><span class="sid">S20</span>手动测试</h3>
+      <span class="tag debug">调试</span><span class="tag safety">安全</span>
+      <table>
+        <tr><th>策略</th><td>手动底盘测试是独立状态 <code>MANUAL_TEST</code>，只接受短时命令，有超时保护。</td></tr>
+        <tr><th>限制</th><td>线速度上限 <code>1500 mm/s</code>，Z 上限 <code>10000 mdeg/cmd</code>，时长 <code>50-3000 ms</code>。</td></tr>
+        <tr><th>实现位置</th><td><code>components/debug_protocol/debug_protocol.c</code>、<code>components/vehicle_state/vehicle_state.c</code></td></tr>
+        <tr><th>验证方法</th><td>发送 <code>manual_motion</code> 后应自动回到调参状态或安全状态。</td></tr>
+      </table>
+    </article>
+
+    <article class="strategy" id="S21">
+      <h3 class="strategy-title"><span class="sid">S21</span>遥测观察</h3>
+      <span class="tag debug">诊断</span>
+      <table>
+        <tr><th>策略</th><td>调试优先看 telemetry，不靠猜。关键字段包括 <code>vehicle.motion_state</code>、<code>line.bits</code>、<code>line.offset</code>、<code>motion.linear_mm_s</code>、<code>motion.angular_mdeg_s</code>、<code>controller.line_phase</code>、<code>controller.pid_output_mdeg_s</code>。</td></tr>
+        <tr><th>用途</th><td>判断是 PID、限幅、速度、传感器、丢线找回方向还是底盘通信问题。</td></tr>
+        <tr><th>实现位置</th><td><code>components/telemetry/telemetry.c</code></td></tr>
+        <tr><th>验证方法</th><td>BLE JSON <code>{"type":"get_telemetry"}</code> 或 Wi-Fi <code>/api/telemetry</code>。</td></tr>
+      </table>
+    </article>
+
+    <article class="strategy" id="S22">
+      <h3 class="strategy-title"><span class="sid">S22</span>蓝牙设备选择与命名</h3>
+      <span class="tag product">小程序</span><span class="tag debug">无线</span>
+      <table>
+        <tr><th>策略</th><td>小程序必须让用户看到并选择 BLE 设备，不静默自动连接。BLE 名称可完整修改，支持中文、英文、数字、<code>-</code>、<code>_</code>，限制 1-20 个 UTF-8 字节。</td></tr>
+        <tr><th>扫描</th><td>默认优先筛选 DCar-Liner 设备，也可显示全部有名设备。手机侧最多保存 8 个已匹配名称作为扫描提示，不占用 ESP32 资源。</td></tr>
+        <tr><th>实现位置</th><td><code>wechat-miniprogram/pages/params/</code>、<code>components/debug_server/debug_server_ble.c</code></td></tr>
+        <tr><th>验证方法</th><td>修改名称后断开重扫，应能看到新名称并重新连接。</td></tr>
+      </table>
+    </article>
+
+    <h2>未来追加格式</h2>
+    <p>新增策略时，继续使用 <code>Sxx</code> 编号，保留四个字段：策略、触发条件或边界、实现位置、验证方法。修改既有策略时，直接更新对应编号，不复制旧版本；旧结论只在必要时写入一句历史说明。</p>
+
+    <footer>
+      DCar-Liner strategy register. Source of truth for current vehicle-side and mini program behavior decisions.
+    </footer>
+  </main>
+</body>
+</html>

@@ -1,0 +1,59 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 900" role="img" aria-labelledby="title desc">
+  <title id="title">巡线目标地图参照图</title>
+  <desc id="desc">一圈手工贴出的不规则黑色胶带圆环路线，标出起点终点、直道、缓弯、急弯和运行方向，没有岔路。</desc>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#d64550"/>
+    </marker>
+    <filter id="tapeShadow" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="0" dy="10" stdDeviation="6" flood-color="#172129" flood-opacity="0.18"/>
+    </filter>
+  </defs>
+  <rect width="1200" height="900" fill="#f6ead4"/>
+  <path d="M0 118 C180 88 322 122 492 92 C700 55 875 84 1200 42" fill="none" stroke="#e7d8bc" stroke-width="8" opacity="0.55"/>
+  <path d="M0 760 C190 790 338 736 505 780 C694 828 908 786 1200 818" fill="none" stroke="#e7d8bc" stroke-width="8" opacity="0.55"/>
+  <g filter="url(#tapeShadow)">
+    <path d="M600 178
+             C780 174 942 250 1004 376
+             C1068 507 1008 656 842 728
+             C689 795 466 782 300 704
+             C151 634 106 498 160 374
+             C218 240 392 181 600 178"
+          fill="none" stroke="#141a1f" stroke-width="74" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M600 178
+             C780 174 942 250 1004 376
+             C1068 507 1008 656 842 728
+             C689 795 466 782 300 704
+             C151 634 106 498 160 374
+             C218 240 392 181 600 178"
+          fill="none" stroke="#2b3035" stroke-width="56" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+  <path d="M502 178 L502 300" stroke="#fffdf8" stroke-width="14" stroke-linecap="round"/>
+  <rect x="454" y="126" width="112" height="48" rx="8" fill="#fffdf8" stroke="#172129" stroke-width="3"/>
+  <text x="510" y="157" text-anchor="middle" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="24" font-weight="800" fill="#172129">起点/终点</text>
+  <path d="M690 212 C782 224 870 270 920 338" fill="none" stroke="#d64550" stroke-width="10" stroke-linecap="round" marker-end="url(#arrow)"/>
+  <text x="840" y="210" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="27" font-weight="900" fill="#d64550">运行方向</text>
+  <g font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="25" font-weight="800" fill="#172129">
+    <rect x="655" y="108" width="122" height="42" rx="8" fill="#fffaf0" stroke="#d7b16a"/>
+    <text x="716" y="137" text-anchor="middle">上直道</text>
+    <rect x="932" y="426" width="116" height="42" rx="8" fill="#fffaf0" stroke="#d7b16a"/>
+    <text x="990" y="455" text-anchor="middle">急弯</text>
+    <rect x="568" y="771" width="122" height="42" rx="8" fill="#fffaf0" stroke="#d7b16a"/>
+    <text x="629" y="800" text-anchor="middle">下直道</text>
+    <rect x="102" y="418" width="116" height="42" rx="8" fill="#fffaf0" stroke="#d7b16a"/>
+    <text x="160" y="447" text-anchor="middle">缓弯</text>
+  </g>
+  <g transform="translate(492 218)">
+    <rect x="-48" y="-28" width="96" height="56" rx="14" fill="#2d6cdf" stroke="#172129" stroke-width="5"/>
+    <rect x="-38" y="-48" width="76" height="22" rx="7" fill="#263238"/>
+    <circle cx="-50" cy="28" r="14" fill="#172129"/>
+    <circle cx="50" cy="28" r="14" fill="#172129"/>
+    <rect x="-45" y="-64" width="90" height="18" rx="5" fill="#f0b429"/>
+    <circle cx="-24" cy="-55" r="5" fill="#151a1f"/>
+    <circle cx="0" cy="-55" r="5" fill="#151a1f"/>
+    <circle cx="24" cy="-55" r="5" fill="#151a1f"/>
+  </g>
+  <rect x="58" y="58" width="432" height="90" rx="12" fill="#fffdf8" stroke="#d9c6a6" stroke-width="3"/>
+  <text x="82" y="98" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="28" font-weight="900" fill="#172129">当前目标地图</text>
+  <text x="82" y="132" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="22" fill="#52616b">一圈不规则黑胶带，无岔路，无迷宫，稳定完成 2 圈。</text>
+</svg>

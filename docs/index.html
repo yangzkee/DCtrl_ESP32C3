@@ -1,0 +1,1081 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>二连杆水平可达范围计算器</title>
+  <style>
+    :root {
+      --bg: #f6f7f9;
+      --panel: #ffffff;
+      --ink: #16202a;
+      --muted: #637083;
+      --line: #d9dee7;
+      --soft: #eef2f6;
+      --teal: #0f766e;
+      --green: #15803d;
+      --blue: #2563eb;
+      --amber: #d97706;
+      --red: #b42318;
+      --violet: #6d28d9;
+      --shadow: 0 14px 34px rgba(22, 32, 42, 0.08);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background: var(--bg);
+      color: var(--ink);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans SC", "Microsoft YaHei", sans-serif;
+      line-height: 1.55;
+    }
+
+    button,
+    input {
+      font: inherit;
+    }
+
+    .shell {
+      width: min(1380px, calc(100vw - 28px));
+      margin: 0 auto;
+      padding: 18px 0 40px;
+    }
+
+    .topbar {
+      display: flex;
+      align-items: flex-end;
+      justify-content: space-between;
+      gap: 20px;
+      padding: 8px 2px 16px;
+    }
+
+    h1,
+    h2,
+    h3,
+    p {
+      margin: 0;
+    }
+
+    h1 {
+      font-size: clamp(24px, 3vw, 36px);
+      line-height: 1.16;
+      font-weight: 760;
+      letter-spacing: 0;
+    }
+
+    .topbar p {
+      color: var(--muted);
+      max-width: 680px;
+      font-size: 15px;
+    }
+
+    .workspace {
+      display: grid;
+      grid-template-columns: minmax(300px, 390px) minmax(0, 1fr);
+      gap: 16px;
+      align-items: start;
+    }
+
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      box-shadow: var(--shadow);
+    }
+
+    .controls {
+      padding: 16px;
+      display: grid;
+      gap: 14px;
+    }
+
+    .section-title {
+      font-size: 15px;
+      font-weight: 760;
+      color: #273241;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .control {
+      display: grid;
+      grid-template-columns: 42px minmax(0, 1fr) 82px;
+      gap: 10px;
+      align-items: center;
+      padding: 10px;
+      background: var(--soft);
+      border: 1px solid #e4e8ef;
+      border-radius: 8px;
+    }
+
+    .control label {
+      font-weight: 760;
+      color: #273241;
+    }
+
+    .control small {
+      display: block;
+      color: var(--muted);
+      font-weight: 520;
+      font-size: 12px;
+      line-height: 1.2;
+    }
+
+    input[type="range"] {
+      width: 100%;
+      accent-color: var(--teal);
+    }
+
+    input[type="number"] {
+      width: 100%;
+      border: 1px solid #cfd6e2;
+      border-radius: 6px;
+      padding: 8px 8px;
+      color: var(--ink);
+      background: #fff;
+      text-align: right;
+    }
+
+    .toolbar {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+
+    .button {
+      border: 1px solid #cfd6e2;
+      background: #fff;
+      color: #263445;
+      border-radius: 8px;
+      padding: 9px 10px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: border-color 160ms ease, color 160ms ease, background-color 160ms ease;
+    }
+
+    .button.active {
+      color: #fff;
+      background: var(--teal);
+      border-color: var(--teal);
+    }
+
+    .button:focus-visible,
+    input:focus-visible {
+      outline: 3px solid rgba(37, 99, 235, 0.24);
+      outline-offset: 2px;
+    }
+
+    .switch-row {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 10px;
+      align-items: center;
+      padding: 10px;
+      border: 1px solid #e4e8ef;
+      border-radius: 8px;
+      background: #fff;
+    }
+
+    .switch-row span {
+      color: #273241;
+      font-weight: 700;
+    }
+
+    .switch-row small {
+      display: block;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .switch-row input {
+      width: 44px;
+      height: 24px;
+      accent-color: var(--teal);
+    }
+
+    .readout {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+    }
+
+    .metric {
+      border: 1px solid #e4e8ef;
+      background: #fff;
+      border-radius: 8px;
+      padding: 10px;
+      min-height: 78px;
+    }
+
+    .metric b {
+      display: block;
+      font-size: 12px;
+      color: var(--muted);
+      font-weight: 680;
+    }
+
+    .metric strong {
+      display: block;
+      margin-top: 6px;
+      font-size: clamp(20px, 4vw, 28px);
+      line-height: 1;
+      color: #17202a;
+      white-space: nowrap;
+    }
+
+    .metric span {
+      display: block;
+      margin-top: 8px;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .status-card {
+      border: 1px solid #e4e8ef;
+      border-radius: 8px;
+      padding: 12px;
+      background: #fff;
+    }
+
+    .status-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-bottom: 10px;
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      min-height: 28px;
+      border-radius: 6px;
+      padding: 3px 8px;
+      font-weight: 760;
+      font-size: 13px;
+      color: #fff;
+    }
+
+    .badge.good {
+      background: var(--green);
+    }
+
+    .badge.warn {
+      background: var(--amber);
+    }
+
+    .badge.bad {
+      background: var(--red);
+    }
+
+    .status-text {
+      color: #273241;
+      font-weight: 650;
+    }
+
+    .mini-list {
+      display: grid;
+      gap: 6px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .main {
+      display: grid;
+      gap: 16px;
+    }
+
+    .stage {
+      min-height: 610px;
+      display: grid;
+      grid-template-rows: auto minmax(420px, 1fr);
+      overflow: hidden;
+    }
+
+    .stage-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      padding: 14px 16px 6px;
+    }
+
+    .stage-head h2 {
+      font-size: 18px;
+    }
+
+    .legend {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      color: var(--muted);
+      font-size: 12px;
+      justify-content: flex-end;
+    }
+
+    .legend span {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      white-space: nowrap;
+    }
+
+    .swatch {
+      width: 12px;
+      height: 12px;
+      border-radius: 3px;
+      display: inline-block;
+      background: var(--teal);
+    }
+
+    .swatch.red {
+      background: var(--red);
+    }
+
+    .swatch.amber {
+      background: var(--amber);
+    }
+
+    .swatch.blue {
+      background: var(--blue);
+    }
+
+    .canvas-wrap {
+      position: relative;
+      min-height: 420px;
+      background: #fbfcfe;
+      border-top: 1px solid #edf0f5;
+    }
+
+    svg {
+      display: block;
+      width: 100%;
+      height: 100%;
+      min-height: 520px;
+    }
+
+    .svg-label {
+      font: 700 12px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      fill: #364152;
+    }
+
+    .svg-small {
+      font: 600 11px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      fill: #637083;
+    }
+
+    .formula-grid {
+      display: grid;
+      grid-template-columns: minmax(0, 0.92fr) minmax(300px, 1.08fr);
+      gap: 16px;
+    }
+
+    .explain {
+      padding: 18px;
+    }
+
+    .explain h2 {
+      font-size: 20px;
+      margin-bottom: 10px;
+    }
+
+    .explain h3 {
+      font-size: 15px;
+      margin: 18px 0 8px;
+      color: #273241;
+    }
+
+    .explain p {
+      color: #334155;
+      margin-top: 8px;
+    }
+
+    .formula {
+      display: block;
+      background: #111827;
+      color: #f8fafc;
+      border-radius: 8px;
+      padding: 12px;
+      margin: 10px 0;
+      overflow-x: auto;
+      font: 700 14px/1.6 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+    }
+
+    .case-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 8px;
+      font-size: 14px;
+    }
+
+    .case-table th,
+    .case-table td {
+      border: 1px solid #dce2ea;
+      text-align: left;
+      padding: 10px;
+      vertical-align: top;
+    }
+
+    .case-table th {
+      background: #eef2f6;
+      color: #273241;
+    }
+
+    .case-table tr.active-case td {
+      background: #ecfdf5;
+      border-color: #a7f3d0;
+    }
+
+    .note {
+      border-left: 4px solid var(--blue);
+      padding: 10px 12px;
+      background: #eff6ff;
+      color: #1e3a8a;
+      border-radius: 0 8px 8px 0;
+      margin-top: 12px;
+    }
+
+    .flow {
+      display: grid;
+      gap: 10px;
+      margin-top: 10px;
+    }
+
+    .step {
+      display: grid;
+      grid-template-columns: 34px 1fr;
+      gap: 10px;
+      align-items: start;
+      padding: 10px;
+      border: 1px solid #e4e8ef;
+      border-radius: 8px;
+      background: #fff;
+    }
+
+    .step-num {
+      display: grid;
+      place-items: center;
+      width: 28px;
+      height: 28px;
+      border-radius: 7px;
+      background: #e0f2fe;
+      color: #075985;
+      font-weight: 800;
+    }
+
+    .step p {
+      margin: 0;
+      color: #334155;
+    }
+
+    @media (max-width: 980px) {
+      .workspace,
+      .formula-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .stage {
+        min-height: auto;
+      }
+    }
+
+    @media (max-width: 620px) {
+      .shell {
+        width: min(100vw - 16px, 1380px);
+        padding-top: 10px;
+      }
+
+      .topbar,
+      .stage-head {
+        display: grid;
+      }
+
+      .control {
+        grid-template-columns: 38px minmax(0, 1fr);
+      }
+
+      .control input[type="number"] {
+        grid-column: 1 / -1;
+      }
+
+      .readout {
+        grid-template-columns: 1fr;
+      }
+
+      svg {
+        min-height: 430px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="shell">
+    <header class="topbar">
+      <div>
+        <h1>二连杆水平可达范围计算器</h1>
+        <p>固定点在原点，末端在负半轴高度 <strong>y = H</strong> 上水平移动。实时计算最大横向位置、连续行程、可达区间和当前目标点状态。</p>
+      </div>
+    </header>
+
+    <div class="workspace">
+      <aside class="panel controls" aria-label="参数面板">
+        <div class="section-title">参数</div>
+
+        <div class="control">
+          <label for="aRange">A<small>第一杆</small></label>
+          <input id="aRange" type="range" min="20" max="260" step="1" value="150">
+          <input id="aNumber" type="number" min="1" max="999" step="1" value="150">
+        </div>
+
+        <div class="control">
+          <label for="bRange">B<small>第二杆</small></label>
+          <input id="bRange" type="range" min="20" max="260" step="1" value="105">
+          <input id="bNumber" type="number" min="1" max="999" step="1" value="105">
+        </div>
+
+        <div class="control">
+          <label for="hRange">H<small>高度</small></label>
+          <input id="hRange" type="range" min="-360" max="-1" step="1" value="-110">
+          <input id="hNumber" type="number" min="-999" max="-1" step="1" value="-110">
+        </div>
+
+        <div class="control">
+          <label for="xRange">X<small>目标点</small></label>
+          <input id="xRange" type="range" min="-320" max="320" step="1" value="120">
+          <input id="xNumber" type="number" min="-999" max="999" step="1" value="120">
+        </div>
+
+        <div class="toolbar">
+          <button class="button active" id="playButton" type="button">播放扫描</button>
+          <button class="button" id="resetButton" type="button">重置参数</button>
+        </div>
+
+        <label class="switch-row" for="elbowToggle">
+          <span>肘部形态<small>切换同一个目标点的另一种关节姿态</small></span>
+          <input id="elbowToggle" type="checkbox" role="switch">
+        </label>
+
+        <div class="section-title">实时结果</div>
+        <div class="readout">
+          <div class="metric">
+            <b>Max / Xmax</b>
+            <strong id="xMaxValue">-</strong>
+            <span>单侧最大横向绝对值</span>
+          </div>
+          <div class="metric">
+            <b>连续行程</b>
+            <strong id="travelValue">-</strong>
+            <span>当前高度上的可连续水平长度</span>
+          </div>
+          <div class="metric">
+            <b>Xmin</b>
+            <strong id="xMinValue">-</strong>
+            <span>内圆断开时出现</span>
+          </div>
+          <div class="metric">
+            <b>r</b>
+            <strong id="rValue">-</strong>
+            <span>当前目标点到原点距离</span>
+          </div>
+        </div>
+
+        <div class="status-card">
+          <div class="status-row">
+            <span class="badge good" id="targetBadge">可达</span>
+            <span class="status-text" id="targetText">当前 X 可以到达</span>
+          </div>
+          <div class="mini-list">
+            <div id="rangeText">-</div>
+            <div id="conditionText">-</div>
+            <div id="angleText">-</div>
+          </div>
+        </div>
+      </aside>
+
+      <section class="main">
+        <div class="panel stage">
+          <div class="stage-head">
+            <h2>运动模拟</h2>
+            <div class="legend">
+              <span><i class="swatch"></i>可达区域</span>
+              <span><i class="swatch red"></i>不可达内圆</span>
+              <span><i class="swatch amber"></i>高度 H</span>
+              <span><i class="swatch blue"></i>二连杆</span>
+            </div>
+          </div>
+          <div class="canvas-wrap">
+            <svg id="simSvg" viewBox="0 0 920 560" role="img" aria-label="二连杆运动模拟图">
+              <defs>
+                <filter id="softShadow" x="-20%" y="-20%" width="140%" height="140%">
+                  <feDropShadow dx="0" dy="8" stdDeviation="5" flood-color="#16202a" flood-opacity="0.16"></feDropShadow>
+                </filter>
+              </defs>
+              <g id="worldLayer"></g>
+              <g id="labelLayer"></g>
+            </svg>
+          </div>
+        </div>
+
+        <div class="formula-grid">
+          <section class="panel explain">
+            <h2>公式原理</h2>
+            <p>把两个连杆想成两根小棍子：它们能把末端送到离原点某个距离 <strong>r</strong> 的地方。最远是两根完全伸直，最近是长棍子折回来还多出的那一段。</p>
+            <code class="formula">最远距离 = A + B
+最近距离 = |A - B|
+所以可达条件：
+|A - B| <= r <= A + B</code>
+            <p>末端点是 <strong>(X, H)</strong>，它到原点的距离来自直角三角形：</p>
+            <code class="formula">r = sqrt(X^2 + H^2)</code>
+            <p>把两条公式合在一起，当前目标点可达的完整判断就是：</p>
+            <code class="formula">|A - B| <= sqrt(X^2 + H^2) <= A + B</code>
+            <div class="note">因为 H 是负数，计算时用 H² 或 |H|，负号只表示方向在原点下方，不会改变距离大小。</div>
+          </section>
+
+          <section class="panel explain">
+            <h2>高度固定时的推导</h2>
+            <div class="flow">
+              <div class="step">
+                <div class="step-num">1</div>
+                <p>先看外圆。末端不能比 <strong>A+B</strong> 更远，所以 <strong>X² + H² <= (A+B)²</strong>。</p>
+              </div>
+              <div class="step">
+                <div class="step-num">2</div>
+                <p>把 H 固定住，只留下 X：<strong>X² <= (A+B)² - H²</strong>。</p>
+              </div>
+              <div class="step">
+                <div class="step-num">3</div>
+                <p>所以单侧最大横向位置是 <strong>Xmax = sqrt((A+B)² - H²)</strong>。</p>
+              </div>
+              <div class="step">
+                <div class="step-num">4</div>
+                <p>如果高度太靠近原点，还要避开内圆：<strong>Xmin = sqrt((A-B)² - H²)</strong>。这时中间一段不能到达。</p>
+              </div>
+            </div>
+          </section>
+        </div>
+
+        <section class="panel explain">
+          <h2>可达与不可达情况</h2>
+          <table class="case-table" aria-label="可达情况表">
+            <thead>
+              <tr>
+                <th>情况</th>
+                <th>条件</th>
+                <th>水平范围</th>
+                <th>含义</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr id="caseOuterFail">
+                <td>整条高度线不可达</td>
+                <td>|H| &gt; A + B</td>
+                <td>没有 X 可以到达</td>
+                <td>高度比两根杆伸直还远。</td>
+              </tr>
+              <tr id="caseOuterPoint">
+                <td>只碰到一个点</td>
+                <td>|H| = A + B</td>
+                <td>X = 0</td>
+                <td>两根杆必须竖直伸直。</td>
+              </tr>
+              <tr id="caseContinuous">
+                <td>连续可达</td>
+                <td>|A-B| &lt;= |H| &lt; A+B</td>
+                <td>-Xmax <= X <= Xmax</td>
+                <td>末端可以在这条水平线上连续左右移动。</td>
+              </tr>
+              <tr id="caseSplit">
+                <td>左右分段可达</td>
+                <td>|H| &lt; |A-B|</td>
+                <td>[-Xmax,-Xmin] 和 [Xmin,Xmax]</td>
+                <td>中间离原点太近，被内圆挡住。</td>
+              </tr>
+            </tbody>
+          </table>
+          <code class="formula">Xmax = sqrt((A+B)^2 - H^2)
+Xmin = sqrt((A-B)^2 - H^2)    只在 |H| < |A-B| 时出现</code>
+        </section>
+      </section>
+    </div>
+  </main>
+
+  <script>
+    const els = {
+      aRange: document.querySelector("#aRange"),
+      aNumber: document.querySelector("#aNumber"),
+      bRange: document.querySelector("#bRange"),
+      bNumber: document.querySelector("#bNumber"),
+      hRange: document.querySelector("#hRange"),
+      hNumber: document.querySelector("#hNumber"),
+      xRange: document.querySelector("#xRange"),
+      xNumber: document.querySelector("#xNumber"),
+      playButton: document.querySelector("#playButton"),
+      resetButton: document.querySelector("#resetButton"),
+      elbowToggle: document.querySelector("#elbowToggle"),
+      xMaxValue: document.querySelector("#xMaxValue"),
+      travelValue: document.querySelector("#travelValue"),
+      xMinValue: document.querySelector("#xMinValue"),
+      rValue: document.querySelector("#rValue"),
+      targetBadge: document.querySelector("#targetBadge"),
+      targetText: document.querySelector("#targetText"),
+      rangeText: document.querySelector("#rangeText"),
+      conditionText: document.querySelector("#conditionText"),
+      angleText: document.querySelector("#angleText"),
+      worldLayer: document.querySelector("#worldLayer"),
+      labelLayer: document.querySelector("#labelLayer"),
+      caseOuterFail: document.querySelector("#caseOuterFail"),
+      caseOuterPoint: document.querySelector("#caseOuterPoint"),
+      caseContinuous: document.querySelector("#caseContinuous"),
+      caseSplit: document.querySelector("#caseSplit")
+    };
+
+    const state = {
+      a: 150,
+      b: 105,
+      h: -110,
+      x: 120,
+      play: true,
+      elbow: 1,
+      lastTime: performance.now(),
+      phase: 0,
+      rafId: null
+    };
+
+    const defaults = { a: 150, b: 105, h: -110, x: 120 };
+    const svgSize = { w: 920, h: 560 };
+    const epsilon = 1e-7;
+
+    function fmt(value) {
+      if (!Number.isFinite(value)) return "-";
+      const rounded = Math.abs(value) < 0.005 ? 0 : value;
+      return rounded.toFixed(2).replace(/\.00$/, "");
+    }
+
+    function clamp(value, min, max) {
+      return Math.min(max, Math.max(min, value));
+    }
+
+    function syncPair(range, number, key, transform = value => value) {
+      const write = value => {
+        const next = transform(Number(value));
+        state[key] = next;
+        range.value = next;
+        number.value = next;
+        if (key === "a" || key === "b" || key === "h") adjustXRange();
+        render();
+      };
+      range.addEventListener("input", event => write(event.target.value));
+      number.addEventListener("input", event => write(event.target.value));
+    }
+
+    function adjustXRange() {
+      const outer = state.a + state.b;
+      const bound = Math.ceil(Math.max(320, outer + 80, Math.abs(state.h) + 80));
+      els.xRange.min = String(-bound);
+      els.xRange.max = String(bound);
+      els.xNumber.min = String(-bound * 3);
+      els.xNumber.max = String(bound * 3);
+    }
+
+    function analyze(a, b, h, x) {
+      const outer = a + b;
+      const inner = Math.abs(a - b);
+      const absH = Math.abs(h);
+      const r = Math.hypot(x, h);
+      let xMax = NaN;
+      let xMin = 0;
+      let intervals = [];
+      let caseId = "caseContinuous";
+
+      if (absH > outer + epsilon) {
+        caseId = "caseOuterFail";
+      } else {
+        xMax = Math.sqrt(Math.max(0, outer * outer - h * h));
+        if (Math.abs(absH - outer) <= epsilon) {
+          caseId = "caseOuterPoint";
+          intervals = [[0, 0]];
+        } else if (absH < inner - epsilon) {
+          caseId = "caseSplit";
+          xMin = Math.sqrt(Math.max(0, inner * inner - h * h));
+          intervals = [[-xMax, -xMin], [xMin, xMax]];
+        } else {
+          caseId = "caseContinuous";
+          intervals = [[-xMax, xMax]];
+        }
+      }
+
+      const reachable = r >= inner - epsilon && r <= outer + epsilon;
+      let reason = "当前 X 可以到达";
+      if (!reachable) {
+        if (r > outer + epsilon) reason = "当前点太远，超过外圆";
+        else if (r < inner - epsilon) reason = "当前点太近，落入内圆";
+        else reason = "当前点不可达";
+      }
+
+      const totalTravel = intervals.reduce((sum, pair) => sum + Math.max(0, pair[1] - pair[0]), 0);
+      const longestTravel = intervals.reduce((best, pair) => Math.max(best, pair[1] - pair[0]), 0);
+
+      return { outer, inner, absH, r, xMax, xMin, intervals, caseId, reachable, reason, totalTravel, longestTravel };
+    }
+
+    function intervalText(intervals) {
+      if (!intervals.length) return "水平可达范围：无";
+      const parts = intervals.map(pair => {
+        if (Math.abs(pair[0] - pair[1]) < 0.01) return `X = ${fmt(pair[0])}`;
+        return `[${fmt(pair[0])}, ${fmt(pair[1])}]`;
+      });
+      return `水平可达范围：${parts.join("  或  ")}`;
+    }
+
+    function pickAnimationX(info, dt) {
+      if (!state.play || !info.intervals.length) return state.x;
+      const intervals = info.intervals.filter(pair => pair[1] - pair[0] > 0.01);
+      if (!intervals.length) return info.intervals[0][0];
+
+      const containing = intervals.find(pair => state.x >= pair[0] - epsilon && state.x <= pair[1] + epsilon);
+      const chosen = containing || (state.x < 0 && intervals[0] ? intervals[0] : intervals[intervals.length - 1]);
+      const width = Math.max(1, chosen[1] - chosen[0]);
+      state.phase = (state.phase + dt * 72) % (2 * width);
+      const sweep = state.phase <= width ? state.phase : 2 * width - state.phase;
+      return chosen[0] + sweep;
+    }
+
+    function nearestSameHeightPoint(info, x, h) {
+      if (!info.intervals.length) return { x: 0, y: -info.outer, available: false };
+      let best = { x: info.intervals[0][0], y: h, available: true };
+      let bestDist = Math.abs(x - best.x);
+      for (const pair of info.intervals) {
+        const candidateX = clamp(x, pair[0], pair[1]);
+        const dist = Math.abs(x - candidateX);
+        if (dist < bestDist) {
+          bestDist = dist;
+          best = { x: candidateX, y: h, available: true };
+        }
+      }
+      return best;
+    }
+
+    function inverseKinematics(a, b, x, y, elbowSign) {
+      const r2 = x * x + y * y;
+      const cos2 = clamp((r2 - a * a - b * b) / (2 * a * b), -1, 1);
+      const theta2 = elbowSign * Math.acos(cos2);
+      const theta1 = Math.atan2(y, x) - Math.atan2(b * Math.sin(theta2), a + b * Math.cos(theta2));
+      const elbow = {
+        x: a * Math.cos(theta1),
+        y: a * Math.sin(theta1)
+      };
+      return {
+        elbow,
+        theta1,
+        theta2,
+        wrist: { x, y }
+      };
+    }
+
+    function makeMapper(a, b, h, x) {
+      const outer = a + b;
+      const spanX = Math.max(outer + 70, Math.abs(x) + 80, 220);
+      const minY = -Math.max(outer + 60, Math.abs(h) + 80, 220);
+      const maxY = Math.max(outer * 0.45, 80);
+      const margin = 42;
+      const scale = Math.min((svgSize.w - margin * 2) / (spanX * 2), (svgSize.h - margin * 2) / (maxY - minY));
+
+      return {
+        minX: -spanX,
+        maxX: spanX,
+        minY,
+        maxY,
+        scale,
+        p(point) {
+          return {
+            x: margin + (point.x + spanX) * scale,
+            y: margin + (maxY - point.y) * scale
+          };
+        },
+        len(value) {
+          return value * scale;
+        }
+      };
+    }
+
+    function line(x1, y1, x2, y2, attrs = "") {
+      return `<line x1="${fmt(x1)}" y1="${fmt(y1)}" x2="${fmt(x2)}" y2="${fmt(y2)}" ${attrs}></line>`;
+    }
+
+    function circle(cx, cy, r, attrs = "") {
+      return `<circle cx="${fmt(cx)}" cy="${fmt(cy)}" r="${fmt(r)}" ${attrs}></circle>`;
+    }
+
+    function text(x, y, content, className = "svg-label", anchor = "middle") {
+      return `<text x="${fmt(x)}" y="${fmt(y)}" class="${className}" text-anchor="${anchor}">${content}</text>`;
+    }
+
+    function draw(info, demoX) {
+      const mapper = makeMapper(state.a, state.b, state.h, Math.max(Math.abs(state.x), Math.abs(demoX)));
+      const p0 = mapper.p({ x: 0, y: 0 });
+      const target = { x: state.x, y: state.h };
+      const targetScreen = mapper.p(target);
+      const demoInfo = analyze(state.a, state.b, state.h, demoX);
+      const demoReachable = demoInfo.reachable;
+      const drawPoint = demoReachable ? { x: demoX, y: state.h } : nearestSameHeightPoint(info, demoX, state.h);
+      const ik = inverseKinematics(state.a, state.b, drawPoint.x, drawPoint.y, state.elbow);
+      const pElbow = mapper.p(ik.elbow);
+      const pWrist = mapper.p(ik.wrist);
+
+      const outerR = mapper.len(info.outer);
+      const innerR = mapper.len(info.inner);
+      const hLineA = mapper.p({ x: mapper.minX, y: state.h });
+      const hLineB = mapper.p({ x: mapper.maxX, y: state.h });
+      const axisXA = mapper.p({ x: mapper.minX, y: 0 });
+      const axisXB = mapper.p({ x: mapper.maxX, y: 0 });
+      const axisYA = mapper.p({ x: 0, y: mapper.minY });
+      const axisYB = mapper.p({ x: 0, y: mapper.maxY });
+
+      let grid = "";
+      const gridStep = chooseGridStep((mapper.maxX - mapper.minX) / 8);
+      for (let gx = Math.ceil(mapper.minX / gridStep) * gridStep; gx <= mapper.maxX; gx += gridStep) {
+        const a = mapper.p({ x: gx, y: mapper.minY });
+        const b = mapper.p({ x: gx, y: mapper.maxY });
+        grid += line(a.x, a.y, b.x, b.y, 'stroke="#edf0f5" stroke-width="1"');
+      }
+      for (let gy = Math.ceil(mapper.minY / gridStep) * gridStep; gy <= mapper.maxY; gy += gridStep) {
+        const a = mapper.p({ x: mapper.minX, y: gy });
+        const b = mapper.p({ x: mapper.maxX, y: gy });
+        grid += line(a.x, a.y, b.x, b.y, 'stroke="#edf0f5" stroke-width="1"');
+      }
+
+      let reachableSegments = "";
+      for (const pair of info.intervals) {
+        const a = mapper.p({ x: pair[0], y: state.h });
+        const b = mapper.p({ x: pair[1], y: state.h });
+        reachableSegments += line(a.x, a.y, b.x, b.y, 'stroke="#15803d" stroke-width="8" stroke-linecap="round" opacity="0.9"');
+      }
+
+      const linkColor = demoReachable ? "#2563eb" : "#9ca3af";
+      const wristColor = demoReachable ? "#0f766e" : "#b42318";
+      const outerFill = info.caseId === "caseOuterFail" ? "rgba(217,119,6,0.08)" : "rgba(15,118,110,0.10)";
+
+      els.worldLayer.innerHTML = `
+        ${grid}
+        ${circle(p0.x, p0.y, outerR, `fill="${outerFill}" stroke="#0f766e" stroke-width="2"`)}
+        ${info.inner > 0.01 ? circle(p0.x, p0.y, innerR, 'fill="rgba(180,35,24,0.13)" stroke="#b42318" stroke-width="2" stroke-dasharray="8 7"') : ""}
+        ${line(axisXA.x, axisXA.y, axisXB.x, axisXB.y, 'stroke="#9aa4b2" stroke-width="1.5"')}
+        ${line(axisYA.x, axisYA.y, axisYB.x, axisYB.y, 'stroke="#9aa4b2" stroke-width="1.5"')}
+        ${line(hLineA.x, hLineA.y, hLineB.x, hLineB.y, 'stroke="#d97706" stroke-width="2" stroke-dasharray="9 7"')}
+        ${reachableSegments}
+        ${line(p0.x, p0.y, pElbow.x, pElbow.y, `stroke="${linkColor}" stroke-width="12" stroke-linecap="round" filter="url(#softShadow)"`)}
+        ${line(pElbow.x, pElbow.y, pWrist.x, pWrist.y, `stroke="${linkColor}" stroke-width="12" stroke-linecap="round" filter="url(#softShadow)"`)}
+        ${line(p0.x, p0.y, pElbow.x, pElbow.y, 'stroke="#ffffff" stroke-width="3" stroke-linecap="round" opacity="0.55"')}
+        ${line(pElbow.x, pElbow.y, pWrist.x, pWrist.y, 'stroke="#ffffff" stroke-width="3" stroke-linecap="round" opacity="0.55"')}
+        ${circle(p0.x, p0.y, 9, 'fill="#111827" stroke="#ffffff" stroke-width="3"')}
+        ${circle(pElbow.x, pElbow.y, 8, 'fill="#2563eb" stroke="#ffffff" stroke-width="3"')}
+        ${circle(pWrist.x, pWrist.y, 9, `fill="${wristColor}" stroke="#ffffff" stroke-width="3"`)}
+        ${circle(targetScreen.x, targetScreen.y, 7, `fill="${info.reachable ? "#15803d" : "#b42318"}" stroke="#ffffff" stroke-width="3"`)}
+        ${info.reachable ? "" : line(targetScreen.x, targetScreen.y, pWrist.x, pWrist.y, 'stroke="#b42318" stroke-width="2" stroke-dasharray="5 5" opacity="0.75"')}
+      `;
+
+      const labelOffset = 16;
+      const xMaxLabel = Number.isFinite(info.xMax) ? mapper.p({ x: info.xMax, y: state.h }) : null;
+      const xMinLabel = info.xMin > 0.01 ? mapper.p({ x: info.xMin, y: state.h }) : null;
+      els.labelLayer.innerHTML = `
+        ${text(p0.x + 10, p0.y - 12, "O(0,0)", "svg-label", "start")}
+        ${text(hLineA.x + 10, hLineA.y - 10, `H = ${fmt(state.h)}`, "svg-label", "start")}
+        ${text(targetScreen.x, targetScreen.y - labelOffset, `目标 X = ${fmt(state.x)}`, "svg-small")}
+        ${text(pWrist.x, pWrist.y + 24, state.play ? `动画 X = ${fmt(demoX)}` : "末端", "svg-small")}
+        ${xMaxLabel ? text(xMaxLabel.x, xMaxLabel.y + 22, `Xmax ${fmt(info.xMax)}`, "svg-small") : ""}
+        ${xMinLabel ? text(xMinLabel.x, xMinLabel.y - 13, `Xmin ${fmt(info.xMin)}`, "svg-small") : ""}
+        ${text(p0.x + outerR - 8, p0.y - 10, `外圆 A+B=${fmt(info.outer)}`, "svg-small", "end")}
+        ${info.inner > 0.01 ? text(p0.x + innerR + 8, p0.y + 18, `内圆 |A-B|=${fmt(info.inner)}`, "svg-small", "start") : ""}
+      `;
+
+      return ik;
+    }
+
+    function chooseGridStep(raw) {
+      const options = [20, 25, 50, 75, 100, 150, 200];
+      return options.find(step => step >= raw) || 250;
+    }
+
+    function updateReadout(info, ik) {
+      els.xMaxValue.textContent = Number.isFinite(info.xMax) ? fmt(info.xMax) : "无";
+      els.travelValue.textContent = info.intervals.length ? fmt(info.longestTravel) : "0";
+      els.xMinValue.textContent = info.xMin > 0.01 ? fmt(info.xMin) : "0";
+      els.rValue.textContent = fmt(info.r);
+
+      els.targetBadge.className = `badge ${info.reachable ? "good" : info.caseId === "caseOuterFail" ? "warn" : "bad"}`;
+      els.targetBadge.textContent = info.reachable ? "可达" : "不可达";
+      els.targetText.textContent = info.reason;
+      els.rangeText.textContent = intervalText(info.intervals);
+
+      const outerCondition = `外圆：r <= A+B，即 ${fmt(info.r)} <= ${fmt(info.outer)}`;
+      const innerCondition = `内圆：r >= |A-B|，即 ${fmt(info.r)} >= ${fmt(info.inner)}`;
+      els.conditionText.textContent = `${innerCondition}；${outerCondition}`;
+
+      const theta1Deg = ik.theta1 * 180 / Math.PI;
+      const theta2Deg = ik.theta2 * 180 / Math.PI;
+      els.angleText.textContent = `关节角示意：theta1 = ${fmt(theta1Deg)} deg，theta2 = ${fmt(theta2Deg)} deg`;
+
+      for (const row of [els.caseOuterFail, els.caseOuterPoint, els.caseContinuous, els.caseSplit]) {
+        row.classList.remove("active-case");
+      }
+      els[info.caseId].classList.add("active-case");
+    }
+
+    function render(now = performance.now()) {
+      if (state.rafId !== null) {
+        cancelAnimationFrame(state.rafId);
+        state.rafId = null;
+      }
+      const dt = Math.min(0.05, Math.max(0, (now - state.lastTime) / 1000));
+      state.lastTime = now;
+      const info = analyze(state.a, state.b, state.h, state.x);
+      const demoX = pickAnimationX(info, dt);
+      const ik = draw(info, demoX);
+      updateReadout(info, ik);
+      if (state.play) state.rafId = requestAnimationFrame(render);
+    }
+
+    function updatePlayButton() {
+      els.playButton.classList.toggle("active", state.play);
+      els.playButton.textContent = state.play ? "暂停扫描" : "播放扫描";
+    }
+
+    syncPair(els.aRange, els.aNumber, "a", value => Math.max(1, Math.round(value)));
+    syncPair(els.bRange, els.bNumber, "b", value => Math.max(1, Math.round(value)));
+    syncPair(els.hRange, els.hNumber, "h", value => Math.min(-1, Math.round(value)));
+    syncPair(els.xRange, els.xNumber, "x", value => Math.round(value));
+
+    els.playButton.addEventListener("click", () => {
+      state.play = !state.play;
+      state.lastTime = performance.now();
+      updatePlayButton();
+      render();
+    });
+
+    els.resetButton.addEventListener("click", () => {
+      Object.assign(state, defaults, { phase: 0, lastTime: performance.now() });
+      for (const key of ["a", "b", "h", "x"]) {
+        els[`${key}Range`].value = state[key];
+        els[`${key}Number`].value = state[key];
+      }
+      adjustXRange();
+      render();
+    });
+
+    els.elbowToggle.addEventListener("change", event => {
+      state.elbow = event.target.checked ? -1 : 1;
+      render();
+    });
+
+    adjustXRange();
+    updatePlayButton();
+    render();
+  </script>
+</body>
+</html>

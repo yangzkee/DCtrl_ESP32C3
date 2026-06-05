@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <title>ESP32 循线小车固件说明</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; line-height: 1.65; margin: 32px; color: #1f2937; }
+    main { max-width: 880px; }
+    h1, h2 { line-height: 1.25; color: #111827; }
+    code { background: #f3f4f6; padding: 2px 5px; border-radius: 4px; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>ESP32 循线小车固件说明</h1>
+    <p>当前工程面向 ESP32-S3，控制一个通过串口接收运动指令的小车底盘，并读取一个通过 VGTI/UART 通信的八路红外循线模块。工程结构已经按 ESP32-C3 迁移做了分层，后续更换芯片时优先调整板级配置，不改控制逻辑。</p>
+    <p>所有已经确认的运动、通信、安全、调参和小程序策略统一登记在 <a href="strategy-register.html">DCar-Liner 策略登记表</a>。新增或修改策略时，优先更新该网页。</p>
+
+    <h2>需要连接的外设</h2>
+    <ul>
+      <li>USB-C 串口：用于首次烧录、日志和恢复；启用 OTA 前也必须先通过 USB 写入一次 OTA 分区表。</li>
+      <li>底盘串口：ESP32 向底盘发送速度和转向指令。</li>
+      <li>八路红外循线模块串口：ESP32 读取循线状态。</li>
+      <li>共地连接：ESP32、底盘控制器、循线模块必须共地。</li>
+      <li>电平保护：若外设是 5V UART，需要加电平转换，ESP32 侧保持 3.3V 逻辑。</li>
+      <li>独立稳定供电：电机供电和 ESP32 供电要避免互相干扰或反灌。</li>
+      <li>无线调试通道：BLE 默认开启，用于微信小程序收发 PID 和速度档位；Wi-Fi 热点只作为按需开启的后备诊断和无线烧录入口。</li>
+    </ul>
+
+    <h2>当前默认接线</h2>
+    <p>ESP32-S3 默认使用两个独立 UART：底盘为 <code>UART1 GPIO17/GPIO18</code>，循线模块为 <code>UART2 GPIO15/GPIO16</code>。这些是工程默认值，最终应按实际开发板原理图确认后固化。</p>
+    <p>ESP32-C3 当前 profile 为：底盘 <code>UART1 TX GPIO4 / RX GPIO5</code>，循线模块 <code>UART0 TX GPIO2 / RX GPIO3</code>。接线时交叉连接：ESP 的 TX 接外设 RX，ESP 的 RX 接外设 TX，并且必须共地。也就是底盘接 <code>GPIO4 -> 底盘RX</code>、<code>GPIO5 &lt;- 底盘TX</code>；循线模块接 <code>GPIO2 -> 模块RX</code>、<code>GPIO3 &lt;- 模块TX</code>。C3 控制台走 USB Serial/JTAG，<code>UART0</code> 保留给循线模块；如后续仍需换脚，只改 C3 板级 profile，不改业务模块。</p>
+
+    <h2>当前巡线目标</h2>
+    <p>本阶段地图只是一圈贴在地上的黑胶带。不规则来自手工贴胶带的自然误差，不是迷宫，也不是分岔路线。固件当前只做圆环巡线：等待启动、跟住线、丢线后线速度归零并用安全 Z 增量原地找线。迷宫、岔路识别、路线记忆和选路暂不进入主运动策略。</p>
+    <p>运动代码已经把硬件接线和巡线策略分开：<code>line_trace_controller</code> 负责读参数、读传感器、发底盘指令；<code>line_trace_policy</code> 负责可替换的巡线状态机。当前内部巡线相位会出现在遥测 <code>controller.line_phase</code> 中，例如 <code>STOPPED</code>、<code>ACQUIRE_LINE</code>、<code>TRACK_LINE</code>、<code>LINE_LOST</code> 和 <code>SENSOR_FAULT</code>。</p>
+
+    <h2>当前协议选择</h2>
+    <p>底盘串口采用 DFLink 的 <code>Motion_Velocity</code> 指令，固件按固定循环频率持续发送 <code>Vx</code> 和 <code>Vz</code>。当前底盘语义中，<code>Vx</code> 是协议线速度值，<code>Vz</code> 是每条速度指令的角度增量，不是持续保持的角速度；如果不持续发送，底盘不会一直运动。八路循线模块优先采用 USART 数字模式，固件发送 <code>$0,0,1#</code> 请求数字数据，并解析 <code>$D,x1:0,...,x8:0#</code> 这类返回帧。当前实测模块语义为黑线输出 <code>0</code>、白底输出 <code>1</code>，所以固件默认把 <code>0</code> 作为有效线。</p>
+    <p>八路模块虽然也支持 IO 和 I2C，但 IO 会占用 8 个 GPIO，不利于迁移到 ESP32-C3；I2C 需要进一步确认地址和寄存器协议。USART 数字模式当前协议最明确、占用引脚少、迁移风险低。</p>
+
+    <h2>迁移到 ESP32-C3</h2>
+    <p>ESP32-C3 的串口和引脚资源比 ESP32-S3 更紧张。工程已经把目标芯片差异集中在板级配置文件中；如果实际 C3 板卡无法同时提供两路独立 UART，只需要改板级 profile 或增加外部串口扩展，不需要重写底盘、循线和控制模块。</p>
+
+    <h2>无线调试</h2>
+    <p>固件启动后默认只开启 BLE Low Energy 调试入口，默认广播名为 <code>DCar-Liner-XXXXXX</code>，后六位来自 ESP32 蓝牙 MAC；也可以通过小程序改成完整自定义名称。BLE 使用 NimBLE GATT，不使用经典蓝牙 SPP，因此后续迁移到 ESP32-C3 时仍然兼容。BLE 服务 UUID 为 <code>7b3a0001-8d4d-4b9a-b5c7-0f7c4c415243</code>，向 RX 特征 <code>7b3a0002-8d4d-4b9a-b5c7-0f7c4c415243</code> 写入命令，从 TX 特征 <code>7b3a0003-8d4d-4b9a-b5c7-0f7c4c415243</code> 读取响应。</p>
+    <p>微信小程序主要使用短 BLE 帧调参：发送 <code>G</code> 读取参数，返回 <code>P&lt;kp&gt;,&lt;ki&gt;,&lt;kd&gt;,&lt;gear&gt;</code>；发送 <code>S&lt;kp&gt;,&lt;ki&gt;,&lt;kd&gt;,&lt;gear&gt;</code> 写入并保存参数；发送 <code>N</code> 读取蓝牙名，发送 <code>N=&lt;name&gt;</code> 保存完整蓝牙名，名称限 1-20 个 UTF-8 字节，只允许中文汉字、英文、数字、<code>-</code>、<code>_</code>，发送 <code>N=*</code> 恢复默认 MAC 名称。当前可调范围固定为 <code>Kp 7000-11000</code>、<code>Ki 0-300</code>、<code>Kd 0-3000</code>、速度档位 <code>1-3</code>。速度档位会同时映射最大协议线速度和单次 Z 角度增量：一档最大协议线速度 <code>250 mm/s</code>（<code>Vx=0.25</code>）与 <code>8000 mdeg/cmd</code>，二档 <code>600 mm/s</code>（<code>Vx=0.6</code>）与 <code>10000 mdeg/cmd</code>，三档 <code>1000 mm/s</code>（<code>Vx=1.0</code>）与 <code>10000 mdeg/cmd</code>。自动循线时，检测到有效线逐渐偏离中间的 <code>x4/x5</code> 红外管，固件会用先慢后快的二次曲线降低线速度，偏到最外侧时大约保留当前档位 45% 的线速度；转向输入也使用归一化偏移的二次曲线，小偏离轻微修正，大偏离快速增大 Z 角度增量。如果 telemetry 中 <code>motion.angular_mdeg_s</code> 长时间贴近这些上限，说明当前主要受转向限幅影响，而不是单纯 PID 增益不足。</p>
+    <p>小程序的循线控制面板使用 BLE JSON 命令：先点 <code>一键自检</code>，小程序依次读取 telemetry、必要时清除故障、执行 <code>arm_auto</code>，三步全部通过并进入 <code>AUTO_ARMED</code> 后才会点亮 <code>开始循线</code>。点击 <code>开始循线</code> 后发送 <code>start_auto</code>，车端进入 <code>AUTO_RUNNING</code>；面板中的 <code>停止</code> 会发送 <code>stop</code>。</p>
+    <p>正式固件已经合入底盘诊断能力，不再需要单独维护临时探针固件。C3 当前底盘口为 <code>TX GPIO4 / RX GPIO5 / 115200</code>，接线仍然是 ESP32 的 TX 接底盘 RX、ESP32 的 RX 接底盘 TX。电脑端 BLE 工具可以发送 <code>C?</code> 查看底盘口配置，发送 <code>Crepeat</code> 连续查询 DFLink ready/version/params 并检查校验和，发送 <code>Cxyz</code> 测试一帧原始 <code>Vx/Vy/Vz</code> 速度指令，发送 <code>Cxyzrx</code> 在速度指令后立刻等待底盘回传，发送 <code>Cxyz500rx</code> 测试 DFLink 协议值 <code>Vx=0.5</code> 的线速度命令并读取回传，发送 <code>Cxyz0</code> 或 <code>Cstop0</code> 发零速帧。<code>Vx=0.5</code> 是已验证的手动/诊断速度；当前自动循线最高档为 <code>Vx=1.0</code>。线速度标定比例 <code>协议值:真实速度 = 10:1</code> 只用于后续估算真实速度，不会在发送前缩放协议值。</p>
+    <p>Wi-Fi 热点默认关闭，以降低功耗。需要后备诊断或无线烧录时，可通过 BLE 发送 <code>W1</code> 启动名为 <code>DCar-Liner-XXXXXX</code> 的 Wi-Fi 热点，默认密码为 <code>DCar-Liner123</code>。电脑手动连接该热点后，可以访问 ESP32 的 HTTP 和 WebSocket 接口读取完整参数表、查看遥测状态，并执行 JSON 调试命令。</p>
+    <p>无线烧录和小程序调参是两条独立路径：小程序 BLE 只收发 <code>Kp/Ki/Kd/速度档位</code> 并保存到 NVS，不改固件、不碰 OTA 分区；无线烧录走 Wi-Fi 的 <code>/api/ota</code>，会让车端进入 <code>OTA_UPDATE</code>、强制停车、写入另一个 OTA app 槽并重启。第一次启用 OTA 时仍要用 USB 烧一次正式固件，因为分区表也需要更新。</p>
+    <p>电脑端无线烧录工具为 <code>tools/ota_upload.py</code>。电脑连上 ESP32 热点后运行 <code>python3 tools/ota_upload.py build-esp32c3/DCar-Liner.bin</code>；如果本机 VPN 或系统路由抢走 <code>192.168.4.1</code>，先确认 ESP32 给电脑分配的 Wi-Fi 地址，例如 <code>192.168.4.2</code>，再加 <code>--source-ip 192.168.4.2</code>。</p>
+    <p>电脑端 BLE 自动测试工具位于 <code>tools/ble_debug_tester.swift</code>。运行后会自动扫描、连接、发送指定命令、读取响应，并把日志写入 <code>logs/ble-debug-tests/</code>。较长 JSON 遥测响应仍会通过 <code>ble_chunk</code> 分包返回，电脑端工具会拼包后解析。</p>
+    <p><code>http://192.168.4.1/</code> 只是 ESP32 上的备用诊断入口，页面只提供静态 API 链接。主调参入口是微信小程序 BLE 参数面板。</p>
+    <p>调试接口的精确地址是 <code>/api/health</code>、<code>/api/schema</code>、<code>/api/params</code> 和 <code>/api/telemetry</code>。如果手误输入 <code>/api/scheme</code>，当前固件也会兼容返回参数表。建议现场先连续打开几次 <code>/api/health</code>，确认 HTTP 服务和内存余量稳定，再打开更大的参数表和遥测接口。</p>
+    <p><code>/api/telemetry</code> 中的 <code>line_uart</code> 字段会显示循迹模块串口请求次数、收到的帧数、数字帧数、无效帧数、超时次数和最后一条原始帧，便于排查黑白线变化没有反应的问题。</p>
+    <p>车端采用停车调参策略：查看遥测不会影响小车状态；进入调参时固件会先停车并进入 <code>PARAM_TUNING</code>，只有在这个状态下才能修改、保存或恢复参数。退出调参后回到 <code>SAFE_IDLE</code>，不会自动继续行驶。</p>
+    <p>自动循迹需要两步明确指令：先进入 <code>AUTO_ARMED</code>，再进入 <code>AUTO_RUNNING</code>。上电默认是 <code>SAFE_IDLE</code>，底盘不动；丢线或短暂传感器异常会进入找线动作，不会立刻故障停车；BLE 连接中断会立即发送停止并回到 <code>SAFE_IDLE</code>。</p>
+    <p>电脑端已经准备了一个离线状态机测试工具：在电脑连上 ESP32 热点后，在工程目录运行 <code>python3 tools/state_machine_tester.py</code>。它会先发送一次安全停车，让重复测试回到待机状态，然后自动访问 HTTP 和 WebSocket 接口，测试调参锁、手动低速测试、准备自动循迹和停车，并把日志写入 <code>logs/state-machine-tests/</code>。默认流程不会发送 <code>start_auto</code>；只有确认小车物理安全时，才使用 <code>--include-auto</code> 测试自动循迹运行状态。</p>
+    <p>当前固件已经按 ESP-IDF 官方示例和常见 ESP32 Wi-Fi 配置项目的做法加固 HTTP 调试服务：大 JSON 响应不再放在 HTTP 任务栈上，普通 API 响应会关闭短连接并禁止缓存，同时允许电脑端网页工具跨源访问。</p>
+    <p>微信小程序的短帧发送会一次性写入并保存 <code>Kp/Ki/Kd/速度档位</code> 四个值。JSON 调试接口仍保持停车调参规则，<code>save_params</code> 执行时才写入 NVS，避免高频调参损耗 flash。</p>
+
+    <h2>当前开发环境</h2>
+    <p>本机已经安装 ESP-IDF <code>v5.5.4</code>，路径为 <code>/Users/schwartz/esp/esp-idf</code>，并安装了 ESP32-S3 与 ESP32-C3 两套目标工具链。当前工程使用 <code>partitions_ota_4mb.csv</code> 自定义 4MB 双 OTA 分区布局，固件产物为 <code>build/DCar-Liner.bin</code> 或 <code>build-esp32c3/DCar-Liner.bin</code>。</p>
+    <p>ESP32-C3 迁移烟测也已经通过，使用独立配置 <code>sdkconfig.esp32c3</code> 和独立构建目录 <code>build-esp32c3/</code>，不会覆盖当前 S3 配置。</p>
+    <p>后续开发可在工程根目录使用 <code>./scripts/idf.sh build</code> 编译，使用 <code>./scripts/idf.sh -p /dev/cu.usbserial-1120 flash monitor</code> 烧录和查看日志。</p>
+  </main>
+</body>
+</html>
