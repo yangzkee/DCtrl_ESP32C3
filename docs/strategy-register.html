@@ -236,7 +236,7 @@
       <h1>DCar-Liner 策略登记表</h1>
       <p class="subtitle">本页集中记录 DCar-Liner 车端、小程序、调试和安全策略。新增策略、修改策略或废弃策略时，优先更新本页，再同步代码、系统说明和模块契约。</p>
       <div class="meta">
-        <span class="pill">当前版本：2026-06-06</span>
+        <span class="pill">当前版本：2026-06-09</span>
         <span class="pill">主目标：ESP32-C3 实车循线</span>
         <span class="pill">主调试入口：微信小程序 BLE</span>
         <span class="pill">维护规则：策略变化必须登记</span>
@@ -253,7 +253,7 @@
     <h2>目录</h2>
     <ul class="toc">
       <li><a href="#S01">S01 目标地图边界</a></li>
-      <li><a href="#S02">S02 模块边界</a></li>
+      <li><a href="#S02">S02 运动分层边界</a></li>
       <li><a href="#S03">S03 板级迁移</a></li>
       <li><a href="#S04">S04 循线传感器读取</a></li>
       <li><a href="#S05">S05 底盘速度协议</a></li>
@@ -290,13 +290,13 @@
     </article>
 
     <article class="strategy" id="S02">
-      <h3 class="strategy-title"><span class="sid">S02</span>模块边界</h3>
+      <h3 class="strategy-title"><span class="sid">S02</span>运动分层边界</h3>
       <span class="tag motion">运动</span><span class="tag product">架构</span>
       <table>
-        <tr><th>策略</th><td><code>line_trace_policy</code> 只做策略判断；UART、BLE、NVS、板级引脚留在外层模块。</td></tr>
-        <tr><th>触发条件</th><td>任何新的循线、找线、速度或转向策略，都先判断是否属于 policy 层。</td></tr>
-        <tr><th>实现位置</th><td><code>components/control/line_trace_policy.c</code>、<code>components/control/line_trace_controller.c</code></td></tr>
-        <tr><th>验证方法</th><td>S3/C3 双目标构建通过；策略修改不需要改 UART 或 BLE 代码。</td></tr>
+        <tr><th>策略</th><td>底盘运动控制分为 <code>motion_contracts</code>、<code>motion_inputs</code>、<code>line_interpreter</code>、<code>motion_policy</code>、<code>motion_executor</code> 五层。Layer 0 <code>motion_contracts</code> 是唯一真相层；输入层只归一化，解析层估测几何关系，策略层生成运动意图，执行层转换为底盘输出合同。</td></tr>
+        <tr><th>触发条件</th><td>任何新的循线、找线、速度、转向、ODOM、姿态或策略目标输入，都先判断应该进入哪一层，避免重新混回一个大 policy 文件。</td></tr>
+        <tr><th>实现位置</th><td><code>components/control/motion_contracts.c</code>、<code>motion_inputs.c</code>、<code>line_interpreter.c</code>、<code>motion_policy.c</code>、<code>motion_executor.c</code>；<code>line_trace_policy.c</code> 保留为稳定外部包装。</td></tr>
+        <tr><th>验证方法</th><td>S3/C3 双目标构建通过；速度档位、PID 曲线、丢线搜索和安全状态行为与第一版稳定调参版本对齐。</td></tr>
       </table>
     </article>
 
@@ -339,7 +339,7 @@
       <table>
         <tr><th>策略</th><td>底盘需要持续收到速度指令才会持续运动。控制任务按 <code>control.loop_period_ms</code> 周期持续发送当前运动命令。</td></tr>
         <tr><th>默认周期</th><td><code>20 ms</code></td></tr>
-        <tr><th>实现位置</th><td><code>components/control/line_trace_controller.c</code></td></tr>
+        <tr><th>实现位置</th><td><code>components/control/motion_contracts.c</code></td></tr>
         <tr><th>验证方法</th><td>进入 <code>AUTO_RUNNING</code> 后，telemetry 中 <code>motion</code> 应持续更新，底盘连续运动。</td></tr>
       </table>
     </article>

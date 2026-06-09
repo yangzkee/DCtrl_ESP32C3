@@ -15,7 +15,7 @@
   <main>
     <h1>ESP32 循线小车固件说明</h1>
     <p>当前工程面向 ESP32-S3，控制一个通过串口接收运动指令的小车底盘，并读取一个通过 VGTI/UART 通信的八路红外循线模块。工程结构已经按 ESP32-C3 迁移做了分层，后续更换芯片时优先调整板级配置，不改控制逻辑。</p>
-    <p>所有已经确认的运动、通信、安全、调参和小程序策略统一登记在 <a href="strategy-register.html">DCar-Liner 策略登记表</a>。新增或修改策略时，优先更新该网页。</p>
+    <p>所有已经确认的运动、通信、安全、调参和小程序策略统一登记在 <a href="strategy-register.html">DCar-Liner 策略登记表</a>。车端状态机与运动分层图见 <a href="vehicle-line-state-machine.html">DCar-Liner 状态机说明</a>。新增或修改策略时，优先更新这些网页。</p>
 
     <h2>需要连接的外设</h2>
     <ul>
@@ -34,7 +34,7 @@
 
     <h2>当前巡线目标</h2>
     <p>本阶段地图只是一圈贴在地上的黑胶带。不规则来自手工贴胶带的自然误差，不是迷宫，也不是分岔路线。固件当前只做圆环巡线：等待启动、跟住线、丢线后线速度归零并用安全 Z 增量原地找线。迷宫、岔路识别、路线记忆和选路暂不进入主运动策略。</p>
-    <p>运动代码已经把硬件接线和巡线策略分开：<code>line_trace_controller</code> 负责读参数、读传感器、发底盘指令；<code>line_trace_policy</code> 负责可替换的巡线状态机。当前内部巡线相位会出现在遥测 <code>controller.line_phase</code> 中，例如 <code>STOPPED</code>、<code>ACQUIRE_LINE</code>、<code>TRACK_LINE</code>、<code>LINE_LOST</code> 和 <code>SENSOR_FAULT</code>。</p>
+    <p>运动代码已经把硬件接线和底盘运动控制分开：<code>line_trace_controller</code> 负责读参数、读传感器、发底盘指令；<code>components/control</code> 内部按 <code>motion_contracts</code>、<code>motion_inputs</code>、<code>line_interpreter</code>、<code>motion_policy</code>、<code>motion_executor</code> 分层。Layer 0 的 <code>motion_contracts</code> 是唯一真相层，集中保存黑白线语义、速度档位、偏移曲线、搜索角度和限幅规则；输入层只整理和归一化数据；解析层估测小车与线路的几何关系；策略层生成运动意图；执行层转换成底盘命令输出合同。当前内部巡线相位会出现在遥测 <code>controller.line_phase</code> 中，例如 <code>STOPPED</code>、<code>ACQUIRE_LINE</code>、<code>TRACK_LINE</code>、<code>LINE_LOST</code> 和 <code>SENSOR_FAULT</code>。</p>
 
     <h2>当前协议选择</h2>
     <p>底盘串口采用 DFLink 的 <code>Motion_Velocity</code> 指令，固件按固定循环频率持续发送 <code>Vx</code> 和 <code>Vz</code>。当前底盘语义中，<code>Vx</code> 是协议线速度值，<code>Vz</code> 是每条速度指令的角度增量，不是持续保持的角速度；如果不持续发送，底盘不会一直运动。八路循线模块优先采用 USART 数字模式，固件发送 <code>$0,0,1#</code> 请求数字数据，并解析 <code>$D,x1:0,...,x8:0#</code> 这类返回帧。当前实测模块语义为黑线输出 <code>0</code>、白底输出 <code>1</code>，所以固件默认把 <code>0</code> 作为有效线。</p>

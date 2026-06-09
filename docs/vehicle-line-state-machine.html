@@ -1,0 +1,1261 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>DCar-Liner 车端状态机与巡线策略图</title>
+  <style>
+    :root {
+      --bg: #f5f7fa;
+      --paper: #ffffff;
+      --ink: #17202a;
+      --muted: #5d6b7a;
+      --line: #d7dee8;
+      --soft: #eef3f8;
+      --blue: #2463eb;
+      --blue-soft: #e8f0ff;
+      --green: #138a5b;
+      --green-soft: #e5f7ef;
+      --amber: #b86b00;
+      --amber-soft: #fff1d6;
+      --red: #c33336;
+      --red-soft: #ffe6e8;
+      --violet: #6f42c1;
+      --violet-soft: #f0e9ff;
+      --cyan: #087f8c;
+      --cyan-soft: #ddf6f8;
+      --shadow: 0 18px 46px rgba(23, 32, 42, 0.10);
+      --radius: 8px;
+      --max: 1240px;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html {
+      scroll-behavior: smooth;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      color: var(--ink);
+      background: var(--bg);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+      line-height: 1.62;
+    }
+
+    a {
+      color: inherit;
+    }
+
+    .top {
+      position: sticky;
+      top: 0;
+      z-index: 10;
+      background: rgba(245, 247, 250, 0.88);
+      border-bottom: 1px solid rgba(23, 32, 42, 0.08);
+      backdrop-filter: blur(16px);
+    }
+
+    .top-inner {
+      width: min(var(--max), calc(100% - 32px));
+      margin: 0 auto;
+      min-height: 64px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 18px;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      min-width: 0;
+      font-weight: 850;
+      letter-spacing: 0;
+    }
+
+    .mark {
+      width: 34px;
+      height: 34px;
+      border-radius: 8px;
+      background: #17202a;
+      position: relative;
+      flex: 0 0 auto;
+      overflow: hidden;
+    }
+
+    .mark::before {
+      content: "";
+      position: absolute;
+      left: 7px;
+      right: 7px;
+      top: 17px;
+      height: 6px;
+      border-radius: 999px;
+      background: #f5be2e;
+      transform: rotate(-8deg);
+    }
+
+    .mark::after {
+      content: "";
+      position: absolute;
+      width: 7px;
+      height: 7px;
+      border-radius: 999px;
+      left: 10px;
+      top: 9px;
+      background: #ee4b5f;
+      box-shadow: 11px 0 0 #18b884;
+    }
+
+    .nav {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      overflow-x: auto;
+      padding: 8px 0;
+    }
+
+    .nav a {
+      flex: 0 0 auto;
+      text-decoration: none;
+      color: #334155;
+      min-height: 34px;
+      padding: 6px 10px;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 740;
+    }
+
+    .nav a:hover,
+    .nav a:focus-visible {
+      outline: none;
+      background: #e8edf4;
+    }
+
+    .hero {
+      width: min(var(--max), calc(100% - 32px));
+      margin: 0 auto;
+      padding: 56px 0 34px;
+    }
+
+    .hero-grid {
+      display: grid;
+      grid-template-columns: minmax(0, 1.05fr) minmax(340px, 0.95fr);
+      gap: 22px;
+      align-items: stretch;
+    }
+
+    .hero-copy,
+    .summary-panel,
+    .panel {
+      background: var(--paper);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+    }
+
+    .hero-copy {
+      padding: clamp(22px, 4vw, 38px);
+      display: grid;
+      align-content: center;
+      min-height: 380px;
+    }
+
+    .eyebrow {
+      display: inline-flex;
+      width: fit-content;
+      align-items: center;
+      min-height: 32px;
+      padding: 4px 11px;
+      border-radius: 8px;
+      background: var(--blue-soft);
+      color: #174ea6;
+      font-weight: 820;
+      font-size: 14px;
+    }
+
+    h1,
+    h2,
+    h3,
+    p {
+      margin: 0;
+    }
+
+    h1 {
+      margin-top: 18px;
+      font-size: clamp(36px, 6vw, 68px);
+      line-height: 1.05;
+      letter-spacing: 0;
+    }
+
+    .lead {
+      margin-top: 18px;
+      max-width: 780px;
+      color: var(--muted);
+      font-size: clamp(17px, 2vw, 21px);
+    }
+
+    .answer {
+      margin-top: 24px;
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 10px;
+    }
+
+    .answer-card {
+      min-height: 120px;
+      padding: 14px;
+      border-radius: var(--radius);
+      border: 1px solid #dbe3ee;
+      background: #fbfcfe;
+    }
+
+    .answer-card b {
+      display: block;
+      font-size: 14px;
+      color: #253140;
+    }
+
+    .answer-card strong {
+      display: block;
+      margin-top: 8px;
+      color: var(--blue);
+      font-size: 18px;
+      line-height: 1.22;
+    }
+
+    .answer-card span {
+      display: block;
+      margin-top: 8px;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.45;
+    }
+
+    .summary-panel {
+      padding: 22px;
+      display: grid;
+      align-content: start;
+      gap: 14px;
+    }
+
+    .summary-title {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .summary-title h2 {
+      font-size: 22px;
+      line-height: 1.2;
+    }
+
+    .tag {
+      display: inline-flex;
+      min-height: 28px;
+      align-items: center;
+      padding: 3px 9px;
+      border-radius: 8px;
+      background: #eef2f6;
+      color: #405064;
+      font-size: 12px;
+      font-weight: 760;
+      white-space: nowrap;
+    }
+
+    .truth-list {
+      display: grid;
+      gap: 10px;
+    }
+
+    .truth {
+      display: grid;
+      grid-template-columns: 28px minmax(0, 1fr);
+      gap: 10px;
+      padding: 12px;
+      border: 1px solid #e2e8f0;
+      border-radius: var(--radius);
+      background: #fbfcfe;
+    }
+
+    .dot {
+      width: 28px;
+      height: 28px;
+      border-radius: 8px;
+      display: grid;
+      place-items: center;
+      color: #fff;
+      font-weight: 850;
+      font-size: 14px;
+    }
+
+    .dot.green {
+      background: var(--green);
+    }
+
+    .dot.amber {
+      background: var(--amber);
+    }
+
+    .dot.red {
+      background: var(--red);
+    }
+
+    .truth b {
+      display: block;
+      line-height: 1.2;
+    }
+
+    .truth span {
+      display: block;
+      margin-top: 4px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .section {
+      width: min(var(--max), calc(100% - 32px));
+      margin: 0 auto;
+      padding: 28px 0;
+    }
+
+    .section-head {
+      display: flex;
+      align-items: flex-end;
+      justify-content: space-between;
+      gap: 20px;
+      margin-bottom: 14px;
+    }
+
+    .section-head h2 {
+      font-size: clamp(26px, 3vw, 38px);
+      line-height: 1.18;
+    }
+
+    .section-head p {
+      max-width: 680px;
+      color: var(--muted);
+    }
+
+    .panel {
+      padding: 18px;
+      overflow: hidden;
+    }
+
+    .diagram-scroll {
+      overflow-x: auto;
+      padding: 8px;
+      border-radius: var(--radius);
+      background: #fbfcfe;
+      border: 1px solid #e4eaf2;
+    }
+
+    svg {
+      display: block;
+      max-width: 100%;
+      height: auto;
+      min-width: 920px;
+    }
+
+    .node rect,
+    .node path {
+      fill: #fff;
+      stroke: #cfd8e5;
+      stroke-width: 2;
+    }
+
+    .node.boot rect {
+      fill: #eef2f6;
+      stroke: #9aa8b8;
+    }
+
+    .node.safe rect {
+      fill: var(--green-soft);
+      stroke: #8bc9aa;
+    }
+
+    .node.tune rect {
+      fill: var(--violet-soft);
+      stroke: #b7a0e5;
+    }
+
+    .node.auto rect,
+    .node.track rect {
+      fill: var(--blue-soft);
+      stroke: #9db6f6;
+    }
+
+    .node.manual rect {
+      fill: var(--amber-soft);
+      stroke: #efc066;
+    }
+
+    .node.fault rect {
+      fill: var(--red-soft);
+      stroke: #f1a0a3;
+    }
+
+    .node.ota rect {
+      fill: var(--cyan-soft);
+      stroke: #8fd0d6;
+    }
+
+    .node.missing rect {
+      fill: #fff;
+      stroke: #aab4c2;
+      stroke-dasharray: 8 6;
+    }
+
+    .node-title {
+      font-size: 18px;
+      font-weight: 850;
+      fill: #16202a;
+    }
+
+    .node-sub {
+      font-size: 12px;
+      fill: #52616b;
+      font-weight: 600;
+    }
+
+    .edge {
+      fill: none;
+      stroke: #697789;
+      stroke-width: 2;
+      marker-end: url(#arrow);
+    }
+
+    .edge.soft {
+      stroke: #92a0b2;
+      stroke-dasharray: 7 6;
+    }
+
+    .edge.red {
+      stroke: var(--red);
+    }
+
+    .edge.green {
+      stroke: var(--green);
+    }
+
+    .edge-label {
+      font-size: 12px;
+      fill: #344256;
+      font-weight: 720;
+    }
+
+    .edge-bg {
+      fill: rgba(255, 255, 255, 0.86);
+      stroke: rgba(203, 213, 225, 0.9);
+      stroke-width: 1;
+    }
+
+    .grid-2 {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+      gap: 16px;
+    }
+
+    .grid-3 {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 14px;
+    }
+
+    .logic-card {
+      border: 1px solid #e1e7f0;
+      background: #fbfcfe;
+      border-radius: var(--radius);
+      padding: 14px;
+      min-height: 150px;
+    }
+
+    .logic-card h3 {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 17px;
+      line-height: 1.25;
+    }
+
+    .pill {
+      display: inline-flex;
+      min-height: 24px;
+      align-items: center;
+      padding: 2px 8px;
+      border-radius: 8px;
+      background: #edf3fb;
+      color: #344256;
+      font-size: 12px;
+      font-weight: 800;
+      white-space: nowrap;
+    }
+
+    .logic-card p,
+    .logic-card li {
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    .logic-card p {
+      margin-top: 9px;
+    }
+
+    ul,
+    ol {
+      margin: 10px 0 0;
+      padding-left: 20px;
+    }
+
+    code {
+      padding: 1px 5px;
+      border-radius: 5px;
+      background: #eef2f6;
+      color: #273241;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 0.92em;
+    }
+
+    .flow {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+      gap: 10px;
+      align-items: stretch;
+    }
+
+    .flow-step {
+      position: relative;
+      padding: 14px;
+      min-height: 134px;
+      border: 1px solid #dfe7f0;
+      border-radius: var(--radius);
+      background: #fff;
+    }
+
+    .flow-step::after {
+      content: "";
+      position: absolute;
+      top: 50%;
+      right: -9px;
+      width: 16px;
+      height: 2px;
+      background: #9aa8b8;
+      transform: translateY(-50%);
+    }
+
+    .flow-step:last-child::after {
+      content: none;
+    }
+
+    .flow-step b {
+      display: block;
+      color: #1f2a37;
+      line-height: 1.25;
+    }
+
+    .flow-step span {
+      display: block;
+      margin-top: 8px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .table-wrap {
+      overflow-x: auto;
+      border: 1px solid #dfe7f0;
+      border-radius: var(--radius);
+      background: #fff;
+    }
+
+    table {
+      width: 100%;
+      min-width: 840px;
+      border-collapse: collapse;
+      font-size: 14px;
+    }
+
+    th,
+    td {
+      padding: 11px 12px;
+      border-bottom: 1px solid #e3e9f1;
+      text-align: left;
+      vertical-align: top;
+    }
+
+    th {
+      background: #f2f5f9;
+      color: #283547;
+      font-size: 13px;
+      font-weight: 850;
+    }
+
+    tr:last-child td {
+      border-bottom: 0;
+    }
+
+    td {
+      color: #4a596b;
+    }
+
+    td strong {
+      color: #17202a;
+    }
+
+    .decision {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 14px;
+    }
+
+    .decision-card {
+      border-radius: var(--radius);
+      padding: 16px;
+      border: 1px solid #dfe7f0;
+      background: #fbfcfe;
+    }
+
+    .decision-card.yes {
+      background: var(--green-soft);
+      border-color: #a6d9be;
+    }
+
+    .decision-card.no {
+      background: var(--amber-soft);
+      border-color: #efc066;
+    }
+
+    .decision-card h3 {
+      font-size: 20px;
+      line-height: 1.25;
+    }
+
+    .decision-card p {
+      margin-top: 10px;
+      color: #405064;
+    }
+
+    .source {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 10px;
+    }
+
+    .source a,
+    .source div {
+      display: block;
+      min-height: 86px;
+      padding: 12px;
+      border-radius: var(--radius);
+      border: 1px solid #e1e7f0;
+      background: #fbfcfe;
+      text-decoration: none;
+      color: #405064;
+      font-size: 13px;
+    }
+
+    .source b {
+      display: block;
+      color: #17202a;
+      font-size: 14px;
+      margin-bottom: 5px;
+    }
+
+    .footer {
+      width: min(var(--max), calc(100% - 32px));
+      margin: 0 auto;
+      padding: 28px 0 44px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    @media (max-width: 920px) {
+      .top-inner,
+      .section-head,
+      .hero-grid {
+        display: block;
+      }
+
+      .nav {
+        margin-top: 8px;
+      }
+
+      .summary-panel {
+        margin-top: 16px;
+      }
+
+      .answer,
+      .grid-2,
+      .grid-3,
+      .decision,
+      .source {
+        grid-template-columns: 1fr;
+      }
+
+      .flow {
+        grid-template-columns: 1fr;
+      }
+
+      .flow-step::after {
+        display: none;
+      }
+
+      svg {
+        min-width: 860px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <header class="top">
+    <div class="top-inner">
+      <div class="brand">
+        <span class="mark" aria-hidden="true"></span>
+        <span>DCar-Liner 状态机说明</span>
+      </div>
+      <nav class="nav" aria-label="页面导航">
+        <a href="#truth">当前结论</a>
+        <a href="#vehicle">整车状态</a>
+        <a href="#trace">巡线策略</a>
+        <a href="#classification">模式识别</a>
+        <a href="#next">下一步</a>
+      </nav>
+    </div>
+  </header>
+
+  <main>
+    <section class="hero" id="truth">
+      <div class="hero-grid">
+        <div class="hero-copy">
+          <span class="eyebrow">基于 main 主干当前实现</span>
+          <h1>车端状态机与巡线内部策略图</h1>
+          <p class="lead">这份图只描述当前主干代码已经真实实现的逻辑。它把“整车运行状态”和“自动巡线内部决策”分开看，避免把底盘动作、PID 输出和状态机概念混在一起。</p>
+          <div class="answer">
+            <div class="answer-card">
+              <b>整车状态机</b>
+              <strong>已经存在</strong>
+              <span>负责上电、待机、调参、手动测试、准备巡线、自动巡线、OTA、故障。</span>
+            </div>
+            <div class="answer-card">
+              <b>巡线 phase 机</b>
+              <strong>已经存在</strong>
+              <span>负责停止、寻线准备、正常跟踪、丢线搜索、传感器异常、手动测试。</span>
+            </div>
+            <div class="answer-card">
+              <b>模式识别状态机</b>
+              <strong>有轻量入口</strong>
+              <span>当前已有单帧中心/左偏/右偏/丢线分类，连续 N 帧趋势仍未启用。</span>
+            </div>
+          </div>
+        </div>
+
+        <aside class="summary-panel">
+          <div class="summary-title">
+            <h2>一句话答案</h2>
+            <span class="tag">当前实现</span>
+          </div>
+          <div class="truth-list">
+            <div class="truth">
+              <span class="dot green">1</span>
+              <div>
+                <b>巡线时不是“前进、左移、右移、旋转”这些动作状态。</b>
+                <span>这些是策略输出给底盘的动作命令，不是主状态。</span>
+              </div>
+            </div>
+            <div class="truth">
+              <span class="dot amber">2</span>
+              <div>
+                <b>巡线内部现在按 phase 和 offset 连续控制。</b>
+                <span>有线就进入 <code>TRACK_LINE</code>，再用 offset 算速度和转向；没线就进入 <code>LINE_LOST</code> 搜索。</span>
+              </div>
+            </div>
+            <div class="truth">
+              <span class="dot red">3</span>
+              <div>
+                <b>连续 N 次图案判定目前没有真正接入。</b>
+                <span>主干已把单帧几何解析放入 <code>line_interpreter</code>，但还没有用连续 N 帧做趋势状态转换。</span>
+              </div>
+            </div>
+          </div>
+        </aside>
+      </div>
+    </section>
+
+    <section class="section" id="vehicle">
+      <div class="section-head">
+        <h2>整车主状态机</h2>
+        <p>这是车端最高层的状态机，位于 <code>vehicle_state</code> 模块。它决定现在能不能调参、能不能手动测试、能不能开始自动巡线、是否处于 OTA 或故障。</p>
+      </div>
+      <div class="panel">
+        <div class="diagram-scroll">
+          <svg viewBox="0 0 1180 620" role="img" aria-label="DCar-Liner 整车主状态机">
+            <defs>
+              <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+                <path d="M 0 0 L 10 5 L 0 10 z" fill="#697789"></path>
+              </marker>
+            </defs>
+
+            <g class="node boot">
+              <rect x="40" y="54" width="170" height="82" rx="8"></rect>
+              <text x="125" y="88" text-anchor="middle" class="node-title">BOOT_INIT</text>
+              <text x="125" y="113" text-anchor="middle" class="node-sub">NVS / UART / BLE / Wi-Fi 初始化</text>
+            </g>
+
+            <g class="node safe">
+              <rect x="290" y="54" width="170" height="82" rx="8"></rect>
+              <text x="375" y="88" text-anchor="middle" class="node-title">SAFE_IDLE</text>
+              <text x="375" y="113" text-anchor="middle" class="node-sub">默认待机，底盘停止</text>
+            </g>
+
+            <g class="node tune">
+              <rect x="550" y="44" width="180" height="92" rx="8"></rect>
+              <text x="640" y="82" text-anchor="middle" class="node-title">PARAM_TUNING</text>
+              <text x="640" y="108" text-anchor="middle" class="node-sub">停车调参，允许写 PID / 档位</text>
+            </g>
+
+            <g class="node manual">
+              <rect x="825" y="44" width="178" height="92" rx="8"></rect>
+              <text x="914" y="82" text-anchor="middle" class="node-title">MANUAL_TEST</text>
+              <text x="914" y="108" text-anchor="middle" class="node-sub">低速手动测试，超时回调参</text>
+            </g>
+
+            <g class="node auto">
+              <rect x="290" y="260" width="170" height="86" rx="8"></rect>
+              <text x="375" y="295" text-anchor="middle" class="node-title">AUTO_ARMED</text>
+              <text x="375" y="320" text-anchor="middle" class="node-sub">准备巡线，底盘仍停止</text>
+            </g>
+
+            <g class="node track">
+              <rect x="550" y="260" width="180" height="86" rx="8"></rect>
+              <text x="640" y="295" text-anchor="middle" class="node-title">AUTO_RUNNING</text>
+              <text x="640" y="320" text-anchor="middle" class="node-sub">20ms 循环输出底盘速度</text>
+            </g>
+
+            <g class="node ota">
+              <rect x="825" y="260" width="178" height="86" rx="8"></rect>
+              <text x="914" y="295" text-anchor="middle" class="node-title">OTA_UPDATE</text>
+              <text x="914" y="320" text-anchor="middle" class="node-sub">无线烧录，运动停用</text>
+            </g>
+
+            <g class="node fault">
+              <rect x="550" y="468" width="180" height="86" rx="8"></rect>
+              <text x="640" y="503" text-anchor="middle" class="node-title">FAULT</text>
+              <text x="640" y="528" text-anchor="middle" class="node-sub">底盘发送失败等故障</text>
+            </g>
+
+            <path class="edge green" d="M210 95 H290"></path>
+            <rect class="edge-bg" x="220" y="72" width="58" height="24" rx="6"></rect>
+            <text class="edge-label" x="249" y="89" text-anchor="middle">boot ok</text>
+
+            <path class="edge" d="M460 96 H550"></path>
+            <rect class="edge-bg" x="480" y="72" width="52" height="24" rx="6"></rect>
+            <text class="edge-label" x="506" y="89" text-anchor="middle">enter</text>
+
+            <path class="edge" d="M730 90 H825"></path>
+            <rect class="edge-bg" x="750" y="66" width="56" height="24" rx="6"></rect>
+            <text class="edge-label" x="778" y="83" text-anchor="middle">manual</text>
+
+            <path class="edge soft" d="M914 136 V184 C914 216 780 216 730 151"></path>
+            <rect class="edge-bg" x="780" y="170" width="104" height="24" rx="6"></rect>
+            <text class="edge-label" x="832" y="187" text-anchor="middle">超时 / stop</text>
+
+            <path class="edge" d="M375 136 V260"></path>
+            <rect class="edge-bg" x="326" y="185" width="98" height="24" rx="6"></rect>
+            <text class="edge-label" x="375" y="202" text-anchor="middle">arm_auto</text>
+
+            <path class="edge" d="M460 303 H550"></path>
+            <rect class="edge-bg" x="476" y="279" width="60" height="24" rx="6"></rect>
+            <text class="edge-label" x="506" y="296" text-anchor="middle">start</text>
+
+            <path class="edge" d="M730 303 H825"></path>
+            <rect class="edge-bg" x="746" y="279" width="62" height="24" rx="6"></rect>
+            <text class="edge-label" x="777" y="296" text-anchor="middle">OTA</text>
+
+            <path class="edge soft" d="M825 330 C755 390 542 394 430 346"></path>
+            <rect class="edge-bg" x="585" y="379" width="112" height="24" rx="6"></rect>
+            <text class="edge-label" x="641" y="396" text-anchor="middle">完成 / 重启后</text>
+
+            <path class="edge soft" d="M640 346 V468"></path>
+            <rect class="edge-bg" x="584" y="391" width="112" height="24" rx="6"></rect>
+            <text class="edge-label" x="640" y="408" text-anchor="middle">chassis send fail</text>
+
+            <path class="edge" d="M550 512 C384 520 334 454 360 346"></path>
+            <rect class="edge-bg" x="392" y="504" width="90" height="24" rx="6"></rect>
+            <text class="edge-label" x="437" y="521" text-anchor="middle">clear_fault</text>
+
+            <path class="edge soft" d="M550 130 C505 180 430 184 386 136"></path>
+            <rect class="edge-bg" x="436" y="152" width="74" height="24" rx="6"></rect>
+            <text class="edge-label" x="473" y="169" text-anchor="middle">exit</text>
+
+            <path class="edge red" d="M640 260 C640 218 560 178 460 130"></path>
+            <rect class="edge-bg" x="538" y="208" width="74" height="24" rx="6"></rect>
+            <text class="edge-label" x="575" y="225" text-anchor="middle">stop</text>
+          </svg>
+        </div>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="section-head">
+        <h2>控制循环数据流</h2>
+        <p>自动巡线不是“开始后发一次速度就完事”，而是控制任务按周期重复读取传感器、计算策略、发送底盘命令。</p>
+      </div>
+      <div class="panel">
+        <div class="flow">
+          <div class="flow-step">
+            <b>1. 读取整车状态</b>
+            <span><code>vehicle_state_get_snapshot</code> 判断是 disabled、manual、armed 还是 running。</span>
+          </div>
+          <div class="flow-step">
+            <b>2. 读取巡线模块</b>
+            <span>非手动、非 OTA 时读取串口帧，超时则进入 sensor fault 输入。</span>
+          </div>
+          <div class="flow-step">
+            <b>3. 读取参数</b>
+            <span>档位映射线速度和最大转向，读取 PID 和积分限幅。</span>
+          </div>
+          <div class="flow-step">
+            <b>4. 策略计算</b>
+            <span><code>line_trace_policy_step</code> 选择 phase 并计算底盘速度。</span>
+          </div>
+          <div class="flow-step">
+            <b>5. 输出到底盘</b>
+            <span>需要运动则发速度；需要停止则发 stop；失败进入故障。</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" id="trace">
+      <div class="section-head">
+        <h2>AUTO_RUNNING 内部巡线 phase 机</h2>
+        <p>这才是你重点关心的“行驶状态中的状态机”。当前版本的内部状态不是按每一种灯型细分，而是按运行条件进入不同 phase。</p>
+      </div>
+      <div class="panel">
+        <div class="diagram-scroll">
+          <svg viewBox="0 0 1180 650" role="img" aria-label="DCar-Liner 自动巡线内部 phase 状态图">
+            <defs>
+              <marker id="arrow2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+                <path d="M 0 0 L 10 5 L 0 10 z" fill="#697789"></path>
+              </marker>
+            </defs>
+
+            <g class="node safe">
+              <rect x="54" y="70" width="176" height="92" rx="8"></rect>
+              <text x="142" y="108" text-anchor="middle" class="node-title">STOPPED</text>
+              <text x="142" y="133" text-anchor="middle" class="node-sub">run disabled，发送 stop</text>
+            </g>
+
+            <g class="node manual">
+              <rect x="54" y="254" width="176" height="92" rx="8"></rect>
+              <text x="142" y="292" text-anchor="middle" class="node-title">MANUAL_TEST</text>
+              <text x="142" y="317" text-anchor="middle" class="node-sub">手动命令直通到底盘</text>
+            </g>
+
+            <g class="node auto">
+              <rect x="314" y="70" width="188" height="92" rx="8"></rect>
+              <text x="408" y="108" text-anchor="middle" class="node-title">ACQUIRE_LINE</text>
+              <text x="408" y="133" text-anchor="middle" class="node-sub">AUTO_ARMED，等待开始</text>
+            </g>
+
+            <g class="node track">
+              <rect x="610" y="70" width="210" height="104" rx="8"></rect>
+              <text x="715" y="108" text-anchor="middle" class="node-title">TRACK_LINE</text>
+              <text x="715" y="133" text-anchor="middle" class="node-sub">bits != 0，PID 跟踪</text>
+              <text x="715" y="154" text-anchor="middle" class="node-sub">线速度和转向都随 offset 变化</text>
+            </g>
+
+            <g class="node fault">
+              <rect x="610" y="284" width="210" height="104" rx="8"></rect>
+              <text x="715" y="322" text-anchor="middle" class="node-title">LINE_LOST</text>
+              <text x="715" y="347" text-anchor="middle" class="node-sub">bits == 0，线速度为 0</text>
+              <text x="715" y="368" text-anchor="middle" class="node-sub">按上一次转向反方向搜索</text>
+            </g>
+
+            <g class="node fault">
+              <rect x="900" y="184" width="210" height="104" rx="8"></rect>
+              <text x="1005" y="222" text-anchor="middle" class="node-title">SENSOR_FAULT</text>
+              <text x="1005" y="247" text-anchor="middle" class="node-sub">串口超时或帧错误</text>
+              <text x="1005" y="268" text-anchor="middle" class="node-sub">AUTO_RUNNING 时搜索</text>
+            </g>
+
+            <g class="node missing">
+              <rect x="314" y="446" width="506" height="118" rx="8"></rect>
+              <text x="567" y="486" text-anchor="middle" class="node-title">未实现：灯型 / 历史模式识别状态</text>
+              <text x="567" y="514" text-anchor="middle" class="node-sub">例如 CENTER_STABLE、LEFT_DEPARTING、RIGHT_DEPARTING、RECOVERING</text>
+              <text x="567" y="538" text-anchor="middle" class="node-sub">当前代码没有用连续 N 帧来切换这些状态</text>
+            </g>
+
+            <path class="edge" style="marker-end:url(#arrow2)" d="M230 116 H314"></path>
+            <rect class="edge-bg" x="247" y="91" width="50" height="24" rx="6"></rect>
+            <text class="edge-label" x="272" y="108" text-anchor="middle">armed</text>
+
+            <path class="edge" style="marker-end:url(#arrow2)" d="M502 116 H610"></path>
+            <rect class="edge-bg" x="530" y="91" width="52" height="24" rx="6"></rect>
+            <text class="edge-label" x="556" y="108" text-anchor="middle">start</text>
+
+            <path class="edge soft" style="marker-end:url(#arrow2)" d="M715 174 V284"></path>
+            <rect class="edge-bg" x="673" y="216" width="84" height="24" rx="6"></rect>
+            <text class="edge-label" x="715" y="233" text-anchor="middle">bits == 0</text>
+
+            <path class="edge green" style="marker-end:url(#arrow2)" d="M610 336 C496 336 496 168 610 126"></path>
+            <rect class="edge-bg" x="504" y="244" width="82" height="24" rx="6"></rect>
+            <text class="edge-label" x="545" y="261" text-anchor="middle">bits != 0</text>
+
+            <path class="edge red" style="marker-end:url(#arrow2)" d="M820 122 C894 129 918 157 955 184"></path>
+            <rect class="edge-bg" x="844" y="119" width="86" height="24" rx="6"></rect>
+            <text class="edge-label" x="887" y="136" text-anchor="middle">timeout</text>
+
+            <path class="edge green" style="marker-end:url(#arrow2)" d="M930 288 C875 354 806 258 772 174"></path>
+            <rect class="edge-bg" x="827" y="331" width="82" height="24" rx="6"></rect>
+            <text class="edge-label" x="868" y="348" text-anchor="middle">恢复帧</text>
+
+            <path class="edge" style="marker-end:url(#arrow2)" d="M230 300 H332 C370 300 382 222 408 162"></path>
+            <rect class="edge-bg" x="262" y="275" width="80" height="24" rx="6"></rect>
+            <text class="edge-label" x="302" y="292" text-anchor="middle">手动结束</text>
+
+            <path class="edge soft" style="marker-end:url(#arrow2)" d="M408 162 C375 238 310 282 230 300"></path>
+            <rect class="edge-bg" x="312" y="207" width="86" height="24" rx="6"></rect>
+            <text class="edge-label" x="355" y="224" text-anchor="middle">manual</text>
+
+            <path class="edge soft" style="marker-end:url(#arrow2)" d="M567 446 C590 380 642 378 690 388"></path>
+            <rect class="edge-bg" x="517" y="402" width="118" height="24" rx="6"></rect>
+            <text class="edge-label" x="576" y="419" text-anchor="middle">可扩展位置</text>
+          </svg>
+        </div>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="section-head">
+        <h2>TRACK_LINE 的计算策略</h2>
+        <p>当前主干的核心不是离散灯型分类，而是把八路传感器压成 <code>bits</code>、<code>offset</code>、<code>active_count</code>，再连续计算速度和转向。</p>
+      </div>
+      <div class="grid-3">
+        <div class="logic-card">
+          <h3><span class="pill">输入</span>八路数字值</h3>
+          <p>巡线模块返回 <code>$D,x1:...,x8:...#</code>。当前主干把值为 <code>0</code> 的探头视为压到黑线，并置入 <code>bits</code>。</p>
+        </div>
+        <div class="logic-card">
+          <h3><span class="pill">位置</span>offset</h3>
+          <p>八个探头权重为 <code>-7,-5,-3,-1,+1,+3,+5,+7</code>。多个探头有效时取平均，所以中间 4、5 同时有效时 offset 接近 0。</p>
+        </div>
+        <div class="logic-card">
+          <h3><span class="pill">质量</span>line quality</h3>
+          <p>有效探头数量为 1 到 3 时质量 100；4 到 5 时质量 60；大于 5 时质量 30；没有有效探头时质量 0。</p>
+        </div>
+      </div>
+
+      <div class="panel" style="margin-top:16px">
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>条件</th>
+                <th>phase</th>
+                <th>输出动作</th>
+                <th>记忆量</th>
+                <th>当前策略含义</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><strong>未自动运行</strong><br><code>DISABLED</code></td>
+                <td><code>STOPPED</code></td>
+                <td>停止底盘</td>
+                <td>清 PID、清丢线计数</td>
+                <td>待机、调参、普通停止都不输出自动运动。</td>
+              </tr>
+              <tr>
+                <td><strong>已经准备但未开始</strong><br><code>AUTO_ARMED</code></td>
+                <td><code>ACQUIRE_LINE</code></td>
+                <td>停止底盘</td>
+                <td>清 PID、清丢线计数</td>
+                <td>这是“准备好但不跑”的明确安全门。</td>
+              </tr>
+              <tr>
+                <td><strong>自动运行且有线</strong><br><code>bits != 0</code></td>
+                <td><code>TRACK_LINE</code></td>
+                <td>线速度按偏离中心减速；角度增量按 PID 输出</td>
+                <td>积分、上一次误差、上一次正常转向</td>
+                <td>偏离中心越多，线速度下降越明显，转向增大越明显，都是二次曲线。</td>
+              </tr>
+              <tr>
+                <td><strong>自动运行且丢线</strong><br><code>bits == 0</code></td>
+                <td><code>LINE_LOST</code></td>
+                <td>线速度为 0；转向固定为 <code>6000 mdeg/cmd</code> 的搜索动作</td>
+                <td>使用上一次正常转向或上一次误差决定搜索方向</td>
+                <td>不是立刻停车，而是反向找线。</td>
+              </tr>
+              <tr>
+                <td><strong>传感器串口异常</strong><br>timeout / error</td>
+                <td><code>SENSOR_FAULT</code></td>
+                <td>自动运行中搜索；其他状态停止</td>
+                <td><code>sensor_fault_count</code> 增加</td>
+                <td>当前主干没有把传感器异常计数转换成主故障状态。</td>
+              </tr>
+              <tr>
+                <td><strong>手动测试</strong><br><code>MANUAL_TEST</code></td>
+                <td><code>MANUAL_TEST</code></td>
+                <td>小程序/调试命令给什么，就发什么</td>
+                <td>记录最后一次底盘命令</td>
+                <td>手动测试绕过自动巡线 PID。</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" id="classification">
+      <div class="section-head">
+        <h2>你说的“模式识别机”现在有没有？</h2>
+        <p>如果把你的设想翻译成 MBD 语言，它应该是一个介于传感器解析和 PID 控制之间的“line pattern classifier”。主干现在已经有 <code>line_interpreter</code> 作为入口，但只做单帧轻量分类，还没有做连续 N 帧趋势状态机。</p>
+      </div>
+      <div class="decision">
+        <div class="decision-card yes">
+          <h3>已有：phase + 单帧几何分类</h3>
+          <p>代码会判断 <code>DISABLED</code>、<code>AUTO_ARMED</code>、<code>AUTO_RUNNING</code>、<code>bits == 0</code>、传感器超时等条件，并进入 <code>STOPPED</code>、<code>TRACK_LINE</code>、<code>LINE_LOST</code>、<code>SENSOR_FAULT</code> 等 phase。<code>line_interpreter</code> 还会输出 <code>CENTERED</code>、<code>LEFT_OFFSET</code>、<code>RIGHT_OFFSET</code>、<code>LOST</code>、<code>SENSOR_FAULT</code> 这些当前帧几何状态。</p>
+        </div>
+        <div class="decision-card no">
+          <h3>没有：连续 N 帧灯型状态机</h3>
+          <p>当前没有 <code>CENTER_STABLE</code>、<code>LEFT_DRIFT</code>、<code>RIGHT_DRIFT</code>、<code>SHARP_LEFT</code>、<code>INTERSECTION</code>、<code>RECOVERING</code> 这类由历史时间窗口确认的状态。</p>
+        </div>
+      </div>
+
+      <div class="panel" style="margin-top:16px">
+        <div class="diagram-scroll">
+          <svg viewBox="0 0 1180 430" role="img" aria-label="当前巡线输入到输出分层图">
+            <defs>
+              <marker id="arrow3" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+                <path d="M 0 0 L 10 5 L 0 10 z" fill="#697789"></path>
+              </marker>
+            </defs>
+
+            <g class="node">
+              <rect x="48" y="92" width="180" height="104" rx="8"></rect>
+              <text x="138" y="130" text-anchor="middle" class="node-title">Sensor Frame</text>
+              <text x="138" y="156" text-anchor="middle" class="node-sub">$D,x1..x8#</text>
+              <text x="138" y="178" text-anchor="middle" class="node-sub">黑线值 0 -> active bit</text>
+            </g>
+
+            <g class="node">
+              <rect x="306" y="92" width="190" height="104" rx="8"></rect>
+              <text x="401" y="130" text-anchor="middle" class="node-title">Line Sample</text>
+              <text x="401" y="156" text-anchor="middle" class="node-sub">bits / offset / count</text>
+              <text x="401" y="178" text-anchor="middle" class="node-sub">当前帧几何信息</text>
+            </g>
+
+            <g class="node missing">
+              <rect x="574" y="72" width="242" height="144" rx="8"></rect>
+              <text x="695" y="116" text-anchor="middle" class="node-title">Pattern Classifier</text>
+              <text x="695" y="144" text-anchor="middle" class="node-sub">主干已有单帧入口</text>
+              <text x="695" y="168" text-anchor="middle" class="node-sub">N 帧中心 / 左偏 / 右偏 / 弯道未启用</text>
+              <text x="695" y="192" text-anchor="middle" class="node-sub">MBD 式扩展会继续放在这里</text>
+            </g>
+
+            <g class="node track">
+              <rect x="894" y="92" width="224" height="104" rx="8"></rect>
+              <text x="1006" y="130" text-anchor="middle" class="node-title">Policy + PID</text>
+              <text x="1006" y="156" text-anchor="middle" class="node-sub">phase + PID + 限幅</text>
+              <text x="1006" y="178" text-anchor="middle" class="node-sub">输出 linear / angular</text>
+            </g>
+
+            <path class="edge" style="marker-end:url(#arrow3)" d="M228 144 H306"></path>
+            <path class="edge soft" style="marker-end:url(#arrow3)" d="M496 144 H574"></path>
+            <path class="edge soft" style="marker-end:url(#arrow3)" d="M816 144 H894"></path>
+
+            <path class="edge green" style="marker-end:url(#arrow3)" d="M496 194 C586 326 850 326 952 196"></path>
+            <rect class="edge-bg" x="645" y="302" width="190" height="28" rx="6"></rect>
+            <text class="edge-label" x="740" y="321" text-anchor="middle">当前主干：line_interpreter 单帧解析后仍保持 offset -> PID 行为</text>
+          </svg>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" id="next">
+      <div class="section-head">
+        <h2>如果下一版要做成真正 MBD 式策略机</h2>
+        <p>我建议不替换现有 PID，而是在它前面加一个很小的模式分类层。这样既保留当前稳定手感，又能解释“连续几帧发生了什么”。</p>
+      </div>
+      <div class="grid-2">
+        <div class="logic-card">
+          <h3><span class="pill">建议新增</span>line_pattern_state</h3>
+          <ul>
+            <li><code>CENTER_STABLE</code>：连续 N 帧 offset 在 -1 到 +1。</li>
+            <li><code>LEFT_DEPARTING</code>：连续 N 帧 offset 为负并增大。</li>
+            <li><code>RIGHT_DEPARTING</code>：连续 N 帧 offset 为正并增大。</li>
+            <li><code>LINE_LOST_LEFT</code> / <code>LINE_LOST_RIGHT</code>：根据丢线前趋势确认搜索方向。</li>
+            <li><code>WIDE_LINE</code> / <code>INTERSECTION</code>：有效探头数过多时不按普通 PID 处理。</li>
+          </ul>
+        </div>
+        <div class="logic-card">
+          <h3><span class="pill">保持不变</span>底盘输出接口</h3>
+          <p>模式识别层只输出“当前线型状态”和建议增益系数；最终仍由现有 <code>line_trace_policy_step</code> 统一生成 <code>linear_mm_s</code> 和 <code>angular_mdeg_s</code>。这样对小程序、BLE、底盘协议都最小侵入。</p>
+        </div>
+      </div>
+
+      <div class="panel" style="margin-top:16px">
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>模块</th>
+                <th>Goal</th>
+                <th>Inputs</th>
+                <th>Outputs</th>
+                <th>Independent Test</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><strong>line_sensor_uart</strong></td>
+                <td>把串口帧转成当前帧位置</td>
+                <td><code>$D,x1..x8#</code></td>
+                <td><code>bits</code>、<code>offset</code>、<code>updated_ms</code></td>
+                <td>喂入固定帧，检查 bits 和 offset。</td>
+              </tr>
+              <tr>
+                <td><strong>line_interpreter</strong></td>
+                <td>把当前帧转成可解释线型状态，后续承接连续帧趋势</td>
+                <td>最近 N 帧 <code>bits/offset/count</code></td>
+                <td>线型状态、置信度、推荐速度系数</td>
+                <td>离线输入帧序列，验证状态转换。</td>
+              </tr>
+              <tr>
+                <td><strong>line_trace_policy</strong></td>
+                <td>统一生成底盘速度命令</td>
+                <td>run mode、sensor status、line sample、pattern state、PID 参数</td>
+                <td><code>linear_mm_s</code>、<code>angular_mdeg_s</code>、phase</td>
+                <td>用固定输入检查速度、转向、搜索方向。</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="section-head">
+        <h2>源码依据</h2>
+        <p>本页不是重新设计，而是从主干源码反推得到。</p>
+      </div>
+      <div class="source">
+        <a href="../components/vehicle_state/vehicle_state.c"><b>vehicle_state.c</b>整车主状态切换、调参锁、故障、OTA。</a>
+        <a href="../components/control/line_trace_controller.c"><b>line_trace_controller.c</b>20ms 控制循环、参数读取、策略输出应用。</a>
+        <a href="../components/control/line_trace_policy.c"><b>line_trace_policy.c</b>巡线 phase、PID、速度衰减、丢线搜索。</a>
+        <a href="../components/line_sensor/line_sensor_uart.c"><b>line_sensor_uart.c</b>八路串口帧解析、黑白映射、offset 计算。</a>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    DCar-Liner main branch state-machine map. The dashed classifier block marks a proposed extension point, not current firmware behavior.
+  </footer>
+</body>
+</html>

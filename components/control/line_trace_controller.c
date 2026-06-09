@@ -9,6 +9,8 @@
 #include "freertos/task.h"
 #include "line_sensor_uart.h"
 #include "line_trace_policy.h"
+#include "motion_contracts.h"
+#include "motion_inputs.h"
 #include "param_store.h"
 #include "telemetry.h"
 #include "vehicle_state.h"
@@ -29,25 +31,6 @@ static float get_float_param(const char *id, float fallback)
     return value;
 }
 
-static void speed_profile_from_gear(int32_t gear, int32_t *base_speed_mm_s, int32_t *max_turn_mdeg_s)
-{
-    switch (gear) {
-    case 1:
-        *base_speed_mm_s = 250;
-        *max_turn_mdeg_s = 8000;
-        break;
-    case 3:
-        *base_speed_mm_s = 1000;
-        *max_turn_mdeg_s = 10000;
-        break;
-    case 2:
-    default:
-        *base_speed_mm_s = 600;
-        *max_turn_mdeg_s = 10000;
-        break;
-    }
-}
-
 static bool get_bool_param(const char *id, bool fallback)
 {
     bool value = fallback;
@@ -55,29 +38,11 @@ static bool get_bool_param(const char *id, bool fallback)
     return value;
 }
 
-static line_trace_run_mode_t run_mode_from_vehicle(const vehicle_state_snapshot_t *vehicle)
-{
-    if (vehicle == NULL) {
-        return LINE_TRACE_RUN_DISABLED;
-    }
-
-    switch (vehicle->motion_state) {
-    case VEHICLE_MOTION_MANUAL_TEST:
-        return LINE_TRACE_RUN_MANUAL_TEST;
-    case VEHICLE_MOTION_AUTO_ARMED:
-        return LINE_TRACE_RUN_AUTO_ARMED;
-    case VEHICLE_MOTION_AUTO_RUNNING:
-        return LINE_TRACE_RUN_AUTO_RUNNING;
-    default:
-        return LINE_TRACE_RUN_DISABLED;
-    }
-}
-
 static void read_policy_config(line_trace_policy_config_t *config)
 {
     int32_t base_speed_mm_s = 600;
     int32_t max_turn_mdeg_s = 10000;
-    speed_profile_from_gear(get_int_param("speed.gear", 2), &base_speed_mm_s, &max_turn_mdeg_s);
+    motion_speed_profile_from_gear(get_int_param("speed.gear", 2), &base_speed_mm_s, &max_turn_mdeg_s);
 
     config->base_speed_mm_s = base_speed_mm_s;
     config->max_turn_mdeg_s = max_turn_mdeg_s;
@@ -85,15 +50,6 @@ static void read_policy_config(line_trace_policy_config_t *config)
     config->ki = get_float_param("pid.ki", 0.0f);
     config->kd = get_float_param("pid.kd", 0.0f);
     config->integral_limit = get_float_param("pid.integral_limit", 40.0f);
-}
-
-static void apply_inversion_if_needed(line_sensor_sample_t *sample)
-{
-    if (sample == NULL || !get_bool_param("sensor.invert_bits", false)) {
-        return;
-    }
-    sample->bits = (uint8_t)~sample->bits;
-    sample->offset = line_sensor_calculate_offset(sample->bits);
 }
 
 static void update_policy_telemetry(const line_trace_policy_output_t *output)
@@ -152,17 +108,14 @@ static void controller_task(void *arg)
 
         vehicle_state_snapshot_t vehicle = {0};
         vehicle_state_get_snapshot(&vehicle);
-        line_trace_policy_input_t input = {
-            .run_mode = run_mode_from_vehicle(&vehicle),
-            .sensor_status = LINE_TRACE_SENSOR_OK,
-            .manual_cmd = vehicle.manual_cmd,
-        };
+        line_trace_policy_input_t input = {0};
+        motion_inputs_from_vehicle(&input, &vehicle);
 
         if (input.run_mode != LINE_TRACE_RUN_MANUAL_TEST &&
             vehicle.motion_state != VEHICLE_MOTION_OTA_UPDATE) {
             esp_err_t err = line_sensor_uart_read_sample(&input.sample, timeout_ms);
             if (err == ESP_OK) {
-                apply_inversion_if_needed(&input.sample);
+                motion_inputs_apply_line_inversion(&input.sample, get_bool_param("sensor.invert_bits", false));
                 telemetry_update_line_sample(&input.sample);
             } else if (err == ESP_ERR_TIMEOUT) {
                 input.sensor_status = LINE_TRACE_SENSOR_TIMEOUT;

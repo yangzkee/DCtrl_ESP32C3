@@ -10,7 +10,7 @@ The firmware has these core modules:
 - `chassis`: serial motion command output for the car chassis.
 - `line_sensor`: serial input parser for the eight-channel infrared line sensor.
 - `vehicle_state`: main motion state, wireless tuning session state, fault reason, and manual-test timeout.
-- `control`: line-following controller shell plus a replaceable simple-circle line policy.
+- `control`: motion-control pipeline split into contracts, input normalization, line interpretation, motion intent, and execution output.
 - `param_store`: live tunable parameter registry plus NVS persistence.
 - `debug_protocol`: JSON request/response protocol for fallback Wi-Fi/BLE diagnostics.
 - `debug_server`: on-demand Wi-Fi SoftAP, HTTP API, WebSocket endpoint, HTTP OTA upload, and BLE GATT debug transport.
@@ -40,7 +40,15 @@ These features should be added later as new policy states or a separate route pl
 - Sends the final command to `chassis_uart`.
 - Publishes telemetry.
 
-`components/control/line_trace_policy.c` owns the simple-circle line-following state machine. It has no UART or NVS access. Its input is the run request, sensor result, manual command, and PID/speed config. Its output is the line phase, motion command, controller telemetry, and optional fault request.
+The motion-control code is now split into five layers. This refactor is intentionally behavior-preserving: the current line-following speed, PID, lost-line search, and safety behavior stay aligned with the first stable tuning release.
+
+- `Layer 0: motion_contracts`: the single source of truth for motion constants and rules, including line active-bit quality, offset curve, speed-gear mapping, search turn increment, speed-retention ratio, and common clamp helpers.
+- `Layer 1: motion_inputs`: converts vehicle/system state and raw sensor samples into a normalized policy input. It applies mechanical operations such as run-mode mapping and optional sensor-bit inversion, but it does not decide what the line shape means.
+- `Layer 2: line_interpreter`: interprets the normalized line sample into geometric facts, including active sensor count, line quality, lost-line flag, curved offset error, and a simple current-frame pattern state.
+- `Layer 3: motion_policy`: turns run mode plus interpreted geometry into a motion intent. This is where the existing phase transitions, PID calculation, adaptive speed reduction, and lost-line search direction live.
+- `Layer 4: motion_executor`: turns the motion intent into the existing `line_trace_policy_output_t` contract. The controller remains the only layer that actually sends commands to `chassis_uart`.
+
+`components/control/line_trace_policy.c` remains the stable public wrapper around this pipeline. It has no UART or NVS access. Its input is the run request, sensor result, manual command, and PID/speed config. Its output is the line phase, motion command, controller telemetry, and optional fault request.
 
 Current line phases:
 
@@ -51,16 +59,53 @@ Current line phases:
 - `LINE_LOST`: no active line bits while running; the policy commands zero linear speed plus a safe Z search increment opposite the last normal tracking turn.
 - `SENSOR_FAULT`: sensor timeout or parse/read error; while running, the policy keeps sending a safe zero-linear search command instead of faulting immediately.
 
-To modify the line-following state machine, start in `line_trace_policy.c`. Keep UART, BLE, NVS, and board-pin details out of that file.
+To modify the line-following behavior, choose the layer by intent:
 
-`line_trace_policy` module definition:
+- Change constants, speed-gear rules, black/white semantics, line-quality thresholds, or protocol-level motion limits in `motion_contracts`.
+- Change how system state, sensor samples, future ODOM, or future vehicle pose are cached and normalized in `motion_inputs`.
+- Change line geometry, current-frame pattern classification, or future N-frame trend classification in `line_interpreter`.
+- Change line-following phases, PID behavior, adaptive speed policy, or lost-line search intent in `motion_policy`.
+- Change final output shaping that is independent of strategy, such as future ramping or slew-rate limiting, in `motion_executor`.
 
-- `Goal`: keep the vehicle on a single black-tape irregular circle with the smallest safe state machine that can later be extended.
-- `Inputs`: run mode, line sensor status, line sample bits/offset, manual command, PID gains, speed profile, turn limit, and integral limit.
-- `Outputs`: internal line phase, chassis motion command, telemetry fields, and optional vehicle fault request.
-- `Independent Test`: S3/C3 builds must compile `line_trace_policy.c`; policy behavior is visible through `controller.line_phase` in telemetry during state-machine and field tests.
-- `Failure Rules`: while auto-running, line loss or transient sensor read issues enter the search phase instead of stopping; search turns opposite the last normal tracking turn direction. BLE disconnect immediately sends chassis stop and returns the vehicle to `SAFE_IDLE`. Chassis send failure is handled by the controller shell as `CHASSIS_SEND_FAILED`.
-- `Next Integration Boundary`: add future branch/maze/route behavior as new policy phases or a separate planner feeding this policy, not inside UART, BLE, or board-profile modules.
+Keep UART, BLE, NVS, and board-pin details out of `line_interpreter`, `motion_policy`, and `motion_executor`.
+
+Motion pipeline module definitions:
+
+- `motion_contracts`
+  - `Goal`: keep canonical motion rules in one place so future changes do not scatter through controller code.
+  - `Inputs`: gear number, line bits, offset, active sensor count, generic numeric values.
+  - `Outputs`: speed profile, line quality, curved error, adaptive speed, and clamped values.
+  - `Independent Test`: C3/S3 builds plus deterministic checks of gear mapping, line quality, and offset curve.
+  - `Failure Rules`: no hardware access, no persistent state, no side effects.
+  - `Next Integration Boundary`: future protocol and physical-unit constants should enter here first.
+- `motion_inputs`
+  - `Goal`: normalize everything that can affect chassis motion into a stable input snapshot.
+  - `Inputs`: `vehicle_state_snapshot_t`, raw `line_sensor_sample_t`, sensor polarity setting, future ODOM/pose/strategy-target fields.
+  - `Outputs`: `line_trace_policy_input_t`.
+  - `Independent Test`: fixed vehicle states must map to the expected run modes; inverted sensor bits must recalculate offset.
+  - `Failure Rules`: no line-meaning decisions and no PID math.
+  - `Next Integration Boundary`: future ODOM and global pose should be added here as normalized cached fields.
+- `line_interpreter`
+  - `Goal`: estimate the vehicle-line geometric relationship from normalized inputs.
+  - `Inputs`: normalized run/sensor input.
+  - `Outputs`: active sensor count, quality, lost-line flag, curved error, and current-frame line pattern state.
+  - `Independent Test`: fixed `bits/offset` samples must produce stable quality, lost-line, and left/right/center/lost pattern outputs.
+  - `Failure Rules`: no chassis command generation.
+  - `Next Integration Boundary`: future N-frame pattern recognition belongs here, not in PID or UART drivers.
+- `motion_policy`
+  - `Goal`: decide what motion the vehicle intends to perform.
+  - `Inputs`: run mode, interpreted line geometry, PID parameters, speed profile, runtime memory.
+  - `Outputs`: `motion_intent_t` with phase, desired chassis command, telemetry fields, and optional fault intent.
+  - `Independent Test`: fixed input sequences must preserve the stable release outputs for stop, armed, track, line-lost, sensor-fault, and manual-test cases.
+  - `Failure Rules`: no hardware send and no parameter storage.
+  - `Next Integration Boundary`: future route strategy can feed this layer as a higher-level target.
+- `motion_executor`
+  - `Goal`: convert a motion intent into the legacy controller output contract.
+  - `Inputs`: `motion_intent_t`.
+  - `Outputs`: `line_trace_policy_output_t`.
+  - `Independent Test`: field-by-field copy should preserve telemetry and chassis command values.
+  - `Failure Rules`: no direct UART send; `line_trace_controller` remains the only hardware-send owner.
+  - `Next Integration Boundary`: future smoothing that is independent of policy can be added here.
 
 Line-following quality is mainly affected by:
 
