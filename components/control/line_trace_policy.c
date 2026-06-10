@@ -97,8 +97,8 @@ const char *line_trace_recovery_stage_name(line_trace_recovery_stage_t stage)
         return "NONE";
     case LINE_TRACE_RECOVERY_STAGE_SWEEP:
         return "SWEEP";
-    case LINE_TRACE_RECOVERY_STAGE_FULL_ROTATION:
-        return "FULL_ROTATION";
+    case LINE_TRACE_RECOVERY_STAGE_ONE_WAY_SEARCH:
+        return "ONE_WAY_SEARCH";
     case LINE_TRACE_RECOVERY_STAGE_FAILED:
         return "FAILED";
     default:

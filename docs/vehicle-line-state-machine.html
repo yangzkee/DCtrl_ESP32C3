@@ -974,7 +974,7 @@
               <rect x="610" y="284" width="210" height="104" rx="8"></rect>
               <text x="715" y="322" text-anchor="middle" class="node-title">LINE_LOST</text>
               <text x="715" y="347" text-anchor="middle" class="node-sub">bits == 0，线速度为 0</text>
-              <text x="715" y="368" text-anchor="middle" class="node-sub">摆扫到 90 度后单向搜 360 度</text>
+              <text x="715" y="368" text-anchor="middle" class="node-sub">相对丢线原点搜到 360 度</text>
             </g>
 
             <g class="node fault">
@@ -1089,8 +1089,8 @@
                 <td><strong>自动运行且丢线</strong><br><code>bits == 0</code></td>
                 <td><code>LINE_LOST</code></td>
                 <td>线速度为 0；转向使用 <code>6000 mdeg/cmd</code>，先扩幅摆扫，再单向全角搜索</td>
-                <td>记录 <code>SWEEP</code> / <code>FULL_ROTATION</code> / <code>FAILED</code>、摆扫角度、目标角度、找回方向和丢线前最后一次正常转向</td>
-                <td>不是立刻停车，而是按 <code>6/12/24/45/66/90 deg</code> 逐步扩大搜索；到 90 度仍未找回后沿当前方向搜索到 360 度，仍失败则停车并回到待驶。</td>
+                <td>记录 <code>SWEEP</code> / <code>ONE_WAY_SEARCH</code> / <code>FAILED</code>、相对丢线原点的角度、目标角度、找回方向和丢线前最后一次正常转向</td>
+                <td>不是立刻停车，而是以丢线位置为零点，先左右 <code>6/12/24 deg</code> 探测；某侧到 <code>45 deg</code> 后同侧外扩到 <code>66/90 deg</code>；到 90 度仍未找回后沿当前方向搜索到相对 <code>360 deg</code>，仍失败则停车并回到待驶。</td>
               </tr>
               <tr>
                 <td><strong>传感器串口异常</strong><br>timeout / error</td>

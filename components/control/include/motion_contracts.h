@@ -14,7 +14,7 @@ extern "C" {
 #define MOTION_LINE_RECOVERY_SWEEP_FIRST_MDEG 6000
 #define MOTION_LINE_RECOVERY_SWEEP_INFLECTION_MDEG 45000
 #define MOTION_LINE_RECOVERY_SWEEP_MAX_MDEG 90000
-#define MOTION_LINE_RECOVERY_FULL_ROTATION_MDEG 360000
+#define MOTION_LINE_RECOVERY_OUTER_LIMIT_MDEG 360000
 
 int32_t motion_clamp_i32(int32_t value, int32_t min_value, int32_t max_value);
 float motion_clamp_float(float value, float min_value, float max_value);

@@ -108,13 +108,13 @@ static void start_sweep_recovery_if_needed(line_trace_policy_runtime_t *runtime)
     runtime->recovery_relation = LINE_TRACE_RECOVERY_NONE;
 }
 
-static void start_full_rotation_recovery(line_trace_policy_runtime_t *runtime, int32_t direction)
+static void start_one_way_recovery(line_trace_policy_runtime_t *runtime, int32_t direction)
 {
     if (direction == 0) {
         direction = -1;
     }
-    runtime->recovery_stage = LINE_TRACE_RECOVERY_STAGE_FULL_ROTATION;
-    runtime->recovery_target_mdeg = direction * MOTION_LINE_RECOVERY_FULL_ROTATION_MDEG;
+    runtime->recovery_stage = LINE_TRACE_RECOVERY_STAGE_ONE_WAY_SEARCH;
+    runtime->recovery_target_mdeg = direction * MOTION_LINE_RECOVERY_OUTER_LIMIT_MDEG;
 }
 
 static void advance_recovery_target_if_reached(line_trace_policy_runtime_t *runtime)
@@ -123,7 +123,7 @@ static void advance_recovery_target_if_reached(line_trace_policy_runtime_t *runt
         return;
     }
 
-    if (runtime->recovery_stage == LINE_TRACE_RECOVERY_STAGE_FULL_ROTATION) {
+    if (runtime->recovery_stage == LINE_TRACE_RECOVERY_STAGE_ONE_WAY_SEARCH) {
         runtime->recovery_stage = LINE_TRACE_RECOVERY_STAGE_FAILED;
         return;
     }
@@ -133,7 +133,13 @@ static void advance_recovery_target_if_reached(line_trace_policy_runtime_t *runt
     }
 
     if (motion_abs_i32(runtime->recovery_target_mdeg) >= MOTION_LINE_RECOVERY_SWEEP_MAX_MDEG) {
-        start_full_rotation_recovery(runtime, sign_i32(runtime->recovery_target_mdeg));
+        start_one_way_recovery(runtime, sign_i32(runtime->recovery_target_mdeg));
+        return;
+    }
+
+    if (motion_abs_i32(runtime->recovery_target_mdeg) >= MOTION_LINE_RECOVERY_SWEEP_INFLECTION_MDEG) {
+        runtime->recovery_amplitude_mdeg = next_sweep_amplitude_mdeg(runtime->recovery_amplitude_mdeg);
+        runtime->recovery_target_mdeg = sign_i32(runtime->recovery_target_mdeg) * runtime->recovery_amplitude_mdeg;
         return;
     }
 
@@ -164,8 +170,8 @@ static int32_t next_sweep_recovery_turn(line_trace_policy_runtime_t *runtime)
     }
 
     runtime->recovery_angle_mdeg = motion_clamp_i32(runtime->recovery_angle_mdeg + command,
-                                                   -MOTION_LINE_RECOVERY_FULL_ROTATION_MDEG,
-                                                   MOTION_LINE_RECOVERY_FULL_ROTATION_MDEG);
+                                                   -MOTION_LINE_RECOVERY_OUTER_LIMIT_MDEG,
+                                                   MOTION_LINE_RECOVERY_OUTER_LIMIT_MDEG);
     runtime->recovery_last_direction_mdeg = command;
     return command;
 }
