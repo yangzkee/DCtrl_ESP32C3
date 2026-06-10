@@ -33,6 +33,13 @@ typedef enum {
     LINE_TRACE_PHASE_SENSOR_FAULT,
 } line_trace_phase_t;
 
+typedef enum {
+    LINE_TRACE_RECOVERY_NONE = 0,
+    LINE_TRACE_RECOVERY_UNDERSTEER,
+    LINE_TRACE_RECOVERY_OSCILLATION_SKEW,
+    LINE_TRACE_RECOVERY_NO_REFERENCE,
+} line_trace_recovery_relation_t;
+
 typedef struct {
     int32_t base_speed_mm_s;
     int32_t max_turn_mdeg_s;
@@ -53,6 +60,13 @@ typedef struct {
     bool has_last_cmd;
     int32_t last_tracking_angular_mdeg_s;
     bool has_last_tracking_angular;
+    bool recovery_active;
+    int32_t recovery_angle_mdeg;
+    int32_t recovery_target_mdeg;
+    int32_t recovery_amplitude_mdeg;
+    int32_t recovery_last_direction_mdeg;
+    int32_t recovery_reference_turn_mdeg;
+    line_trace_recovery_relation_t recovery_relation;
 } line_trace_policy_runtime_t;
 
 typedef struct {
@@ -73,6 +87,10 @@ typedef struct {
     uint8_t line_quality;
     uint8_t active_sensor_count;
     float pid_output_mdeg_s;
+    line_trace_recovery_relation_t recovery_relation;
+    int32_t recovery_angle_mdeg;
+    int32_t recovery_target_mdeg;
+    int32_t recovery_direction_mdeg;
 } line_trace_policy_output_t;
 
 void line_trace_policy_init(line_trace_policy_runtime_t *runtime);
@@ -82,6 +100,7 @@ void line_trace_policy_step(line_trace_policy_runtime_t *runtime,
                             const line_trace_policy_input_t *input,
                             line_trace_policy_output_t *output);
 const char *line_trace_policy_phase_name(line_trace_phase_t phase);
+const char *line_trace_recovery_relation_name(line_trace_recovery_relation_t relation);
 
 #ifdef __cplusplus
 }

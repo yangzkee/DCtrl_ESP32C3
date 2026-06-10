@@ -21,6 +21,10 @@ typedef struct {
     uint8_t line_quality;
     uint8_t active_sensor_count;
     float pid_output_mdeg_s;
+    line_trace_recovery_relation_t recovery_relation;
+    int32_t recovery_angle_mdeg;
+    int32_t recovery_target_mdeg;
+    int32_t recovery_direction_mdeg;
 } motion_intent_t;
 
 void motion_policy_plan(line_trace_policy_runtime_t *runtime,

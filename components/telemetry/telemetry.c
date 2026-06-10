@@ -87,6 +87,9 @@ esp_err_t telemetry_build_json(char *buffer, size_t buffer_size)
     char line_phase[sizeof(controller_state.line_phase)] = {0};
     strlcpy(line_phase, controller_state.line_phase, sizeof(line_phase));
     sanitize_json_string(line_phase);
+    char recovery_relation[sizeof(controller_state.recovery_relation)] = {0};
+    strlcpy(recovery_relation, controller_state.recovery_relation, sizeof(recovery_relation));
+    sanitize_json_string(recovery_relation);
 
     int written = snprintf(buffer,
                            buffer_size,
@@ -101,7 +104,9 @@ esp_err_t telemetry_build_json(char *buffer, size_t buffer_size)
                            "\"last_error\":%d,\"last_frame\":\"%s\"},"
                            "\"motion\":{\"linear_mm_s\":%ld,\"angular_mdeg_s\":%ld},"
                            "\"controller\":{\"line_phase\":\"%s\",\"lost_line\":%s,\"line_quality\":%u,"
-                           "\"active_sensor_count\":%u,\"pid_output_mdeg_s\":%.2f}}",
+                           "\"active_sensor_count\":%u,\"pid_output_mdeg_s\":%.2f,"
+                           "\"recovery\":{\"relation\":\"%s\",\"angle_mdeg\":%ld,"
+                           "\"target_mdeg\":%ld,\"direction_mdeg\":%ld}}}",
                            (unsigned long long)(esp_timer_get_time() / 1000ULL),
                            (unsigned long)param_store_version(),
                            vehicle_motion_state_name(vehicle.motion_state),
@@ -128,7 +133,11 @@ esp_err_t telemetry_build_json(char *buffer, size_t buffer_size)
                            controller_state.lost_line ? "true" : "false",
                            controller_state.line_quality,
                            controller_state.active_sensor_count,
-                           controller_state.pid_output_mdeg_s);
+                           controller_state.pid_output_mdeg_s,
+                           recovery_relation[0] == '\0' ? "NONE" : recovery_relation,
+                           (long)controller_state.recovery_angle_mdeg,
+                           (long)controller_state.recovery_target_mdeg,
+                           (long)controller_state.recovery_direction_mdeg);
 
     return written > 0 && written < (int)buffer_size ? ESP_OK : ESP_ERR_INVALID_SIZE;
 }

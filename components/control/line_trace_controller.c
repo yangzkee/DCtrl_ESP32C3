@@ -64,10 +64,16 @@ static void update_policy_telemetry(const line_trace_policy_output_t *output)
         .line_quality = output->line_quality,
         .active_sensor_count = output->active_sensor_count,
         .pid_output_mdeg_s = output->pid_output_mdeg_s,
+        .recovery_angle_mdeg = output->recovery_angle_mdeg,
+        .recovery_target_mdeg = output->recovery_target_mdeg,
+        .recovery_direction_mdeg = output->recovery_direction_mdeg,
     };
     strlcpy(state.line_phase,
             line_trace_policy_phase_name(output->phase),
             sizeof(state.line_phase));
+    strlcpy(state.recovery_relation,
+            line_trace_recovery_relation_name(output->recovery_relation),
+            sizeof(state.recovery_relation));
     telemetry_update_controller_state(&state);
 }
 

@@ -10,6 +10,25 @@ static void reset_fault_grace(line_trace_policy_runtime_t *runtime)
     runtime->lost_line_count = 0;
 }
 
+static int32_t sign_i32(int32_t value)
+{
+    if (value > 0) {
+        return 1;
+    }
+    if (value < 0) {
+        return -1;
+    }
+    return 0;
+}
+
+static void publish_recovery_state(const line_trace_policy_runtime_t *runtime, motion_intent_t *intent)
+{
+    intent->recovery_relation = runtime->recovery_relation;
+    intent->recovery_angle_mdeg = runtime->recovery_angle_mdeg;
+    intent->recovery_target_mdeg = runtime->recovery_target_mdeg;
+    intent->recovery_direction_mdeg = runtime->recovery_last_direction_mdeg;
+}
+
 static void set_stop_intent(motion_intent_t *intent, line_trace_phase_t phase)
 {
     intent->phase = phase;
@@ -32,9 +51,9 @@ static int32_t search_turn_mdeg(const line_trace_policy_runtime_t *runtime)
     return MOTION_LINE_SEARCH_TURN_MDEG;
 }
 
-static void set_search_intent(line_trace_policy_runtime_t *runtime,
-                              motion_intent_t *intent,
-                              line_trace_phase_t phase)
+static void set_fixed_search_intent(line_trace_policy_runtime_t *runtime,
+                                    motion_intent_t *intent,
+                                    line_trace_phase_t phase)
 {
     intent->phase = phase;
     intent->cmd.linear_mm_s = 0;
@@ -44,6 +63,96 @@ static void set_search_intent(line_trace_policy_runtime_t *runtime,
     intent->pid_output_mdeg_s = 0.0f;
     runtime->last_cmd = intent->cmd;
     runtime->has_last_cmd = true;
+}
+
+static void start_sweep_recovery_if_needed(line_trace_policy_runtime_t *runtime)
+{
+    if (runtime->recovery_active) {
+        return;
+    }
+
+    runtime->recovery_active = true;
+    runtime->recovery_angle_mdeg = 0;
+    runtime->recovery_amplitude_mdeg = MOTION_LINE_RECOVERY_SWEEP_STEP_MDEG;
+    runtime->recovery_target_mdeg = -MOTION_LINE_RECOVERY_SWEEP_STEP_MDEG;
+    runtime->recovery_last_direction_mdeg = 0;
+    runtime->recovery_reference_turn_mdeg =
+        runtime->has_last_tracking_angular ? runtime->last_tracking_angular_mdeg_s : 0;
+    runtime->recovery_relation = LINE_TRACE_RECOVERY_NONE;
+}
+
+static void advance_sweep_target_if_reached(line_trace_policy_runtime_t *runtime)
+{
+    if (runtime->recovery_angle_mdeg != runtime->recovery_target_mdeg) {
+        return;
+    }
+
+    if (runtime->recovery_target_mdeg < 0) {
+        runtime->recovery_target_mdeg = runtime->recovery_amplitude_mdeg;
+        return;
+    }
+
+    if (runtime->recovery_amplitude_mdeg < MOTION_LINE_RECOVERY_SWEEP_MAX_MDEG) {
+        runtime->recovery_amplitude_mdeg += MOTION_LINE_RECOVERY_SWEEP_STEP_MDEG;
+        runtime->recovery_amplitude_mdeg = motion_clamp_i32(runtime->recovery_amplitude_mdeg,
+                                                            MOTION_LINE_RECOVERY_SWEEP_STEP_MDEG,
+                                                            MOTION_LINE_RECOVERY_SWEEP_MAX_MDEG);
+    }
+    runtime->recovery_target_mdeg = -runtime->recovery_amplitude_mdeg;
+}
+
+static int32_t next_sweep_recovery_turn(line_trace_policy_runtime_t *runtime)
+{
+    start_sweep_recovery_if_needed(runtime);
+    advance_sweep_target_if_reached(runtime);
+
+    const int32_t remaining = runtime->recovery_target_mdeg - runtime->recovery_angle_mdeg;
+    const int32_t direction = sign_i32(remaining);
+    int32_t command = direction * MOTION_LINE_SEARCH_TURN_MDEG;
+
+    if (motion_abs_i32(command) > motion_abs_i32(remaining)) {
+        command = remaining;
+    }
+
+    runtime->recovery_angle_mdeg = motion_clamp_i32(runtime->recovery_angle_mdeg + command,
+                                                   -MOTION_LINE_RECOVERY_SWEEP_MAX_MDEG,
+                                                   MOTION_LINE_RECOVERY_SWEEP_MAX_MDEG);
+    runtime->recovery_last_direction_mdeg = command;
+    return command;
+}
+
+static void set_sweep_search_intent(line_trace_policy_runtime_t *runtime,
+                                    motion_intent_t *intent,
+                                    line_trace_phase_t phase)
+{
+    intent->phase = phase;
+    intent->cmd.linear_mm_s = 0;
+    intent->cmd.angular_mdeg_s = next_sweep_recovery_turn(runtime);
+    intent->should_send_motion = true;
+    intent->lost_line = true;
+    intent->pid_output_mdeg_s = 0.0f;
+    runtime->last_cmd = intent->cmd;
+    runtime->has_last_cmd = true;
+}
+
+static void note_recovery_result_if_needed(line_trace_policy_runtime_t *runtime)
+{
+    if (!runtime->recovery_active) {
+        return;
+    }
+
+    const int32_t reference_sign = sign_i32(runtime->recovery_reference_turn_mdeg);
+    const int32_t found_sign = sign_i32(runtime->recovery_last_direction_mdeg);
+
+    if (reference_sign == 0 || found_sign == 0) {
+        runtime->recovery_relation = LINE_TRACE_RECOVERY_NO_REFERENCE;
+    } else if (reference_sign == found_sign) {
+        runtime->recovery_relation = LINE_TRACE_RECOVERY_UNDERSTEER;
+    } else {
+        runtime->recovery_relation = LINE_TRACE_RECOVERY_OSCILLATION_SKEW;
+    }
+
+    runtime->recovery_active = false;
 }
 
 void motion_policy_plan(line_trace_policy_runtime_t *runtime,
@@ -68,6 +177,7 @@ void motion_policy_plan(line_trace_policy_runtime_t *runtime,
         runtime->last_cmd = intent->cmd;
         runtime->has_last_cmd = true;
         runtime->phase = intent->phase;
+        publish_recovery_state(runtime, intent);
         return;
     }
 
@@ -75,11 +185,12 @@ void motion_policy_plan(line_trace_policy_runtime_t *runtime,
         runtime->sensor_fault_count++;
         runtime->lost_line_count = 0;
         if (input->run_mode == LINE_TRACE_RUN_AUTO_RUNNING) {
-            set_search_intent(runtime, intent, LINE_TRACE_PHASE_SENSOR_FAULT);
+            set_fixed_search_intent(runtime, intent, LINE_TRACE_PHASE_SENSOR_FAULT);
         } else {
             set_stop_intent(intent, LINE_TRACE_PHASE_SENSOR_FAULT);
         }
         runtime->phase = intent->phase;
+        publish_recovery_state(runtime, intent);
         return;
     }
 
@@ -93,6 +204,7 @@ void motion_policy_plan(line_trace_policy_runtime_t *runtime,
         runtime->has_last_cmd = false;
         set_stop_intent(intent, LINE_TRACE_PHASE_STOPPED);
         runtime->phase = intent->phase;
+        publish_recovery_state(runtime, intent);
         return;
     }
 
@@ -102,6 +214,7 @@ void motion_policy_plan(line_trace_policy_runtime_t *runtime,
         runtime->has_last_cmd = false;
         set_stop_intent(intent, LINE_TRACE_PHASE_ACQUIRE_LINE);
         runtime->phase = intent->phase;
+        publish_recovery_state(runtime, intent);
         return;
     }
 
@@ -111,17 +224,20 @@ void motion_policy_plan(line_trace_policy_runtime_t *runtime,
         runtime->has_last_cmd = false;
         set_stop_intent(intent, LINE_TRACE_PHASE_STOPPED);
         runtime->phase = intent->phase;
+        publish_recovery_state(runtime, intent);
         return;
     }
 
     if (geometry->lost_line) {
         runtime->lost_line_count++;
         runtime->sensor_fault_count = 0;
-        set_search_intent(runtime, intent, LINE_TRACE_PHASE_LINE_LOST);
+        set_sweep_search_intent(runtime, intent, LINE_TRACE_PHASE_LINE_LOST);
         runtime->phase = intent->phase;
+        publish_recovery_state(runtime, intent);
         return;
     }
 
+    note_recovery_result_if_needed(runtime);
     reset_fault_grace(runtime);
     const float error = geometry->curved_error;
     const float derivative = runtime->has_previous_error ? error - runtime->previous_error : 0.0f;
@@ -148,4 +264,5 @@ void motion_policy_plan(line_trace_policy_runtime_t *runtime,
         runtime->has_last_tracking_angular = true;
     }
     runtime->phase = intent->phase;
+    publish_recovery_state(runtime, intent);
 }

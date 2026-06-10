@@ -19,4 +19,8 @@ void motion_executor_build_output(const motion_intent_t *intent, line_trace_poli
     output->line_quality = intent->line_quality;
     output->active_sensor_count = intent->active_sensor_count;
     output->pid_output_mdeg_s = intent->pid_output_mdeg_s;
+    output->recovery_relation = intent->recovery_relation;
+    output->recovery_angle_mdeg = intent->recovery_angle_mdeg;
+    output->recovery_target_mdeg = intent->recovery_target_mdeg;
+    output->recovery_direction_mdeg = intent->recovery_direction_mdeg;
 }

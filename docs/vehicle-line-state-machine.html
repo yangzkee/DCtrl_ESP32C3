@@ -974,7 +974,7 @@
               <rect x="610" y="284" width="210" height="104" rx="8"></rect>
               <text x="715" y="322" text-anchor="middle" class="node-title">LINE_LOST</text>
               <text x="715" y="347" text-anchor="middle" class="node-sub">bits == 0，线速度为 0</text>
-              <text x="715" y="368" text-anchor="middle" class="node-sub">按上一次转向反方向搜索</text>
+              <text x="715" y="368" text-anchor="middle" class="node-sub">扩幅摆扫找线，最大 +/-90 度</text>
             </g>
 
             <g class="node fault">
@@ -1088,9 +1088,9 @@
               <tr>
                 <td><strong>自动运行且丢线</strong><br><code>bits == 0</code></td>
                 <td><code>LINE_LOST</code></td>
-                <td>线速度为 0；转向固定为 <code>6000 mdeg/cmd</code> 的搜索动作</td>
-                <td>使用上一次正常转向或上一次误差决定搜索方向</td>
-                <td>不是立刻停车，而是反向找线。</td>
+                <td>线速度为 0；转向使用 <code>6000 mdeg/cmd</code> 的扩幅摆扫动作</td>
+                <td>记录摆扫角度、目标角度、找回方向和丢线前最后一次正常转向</td>
+                <td>不是立刻停车，而是在 +/-90 度内左、右、左、右逐步扩大搜索；找回后只记录几何关系，不改变当前控制输出。</td>
               </tr>
               <tr>
                 <td><strong>传感器串口异常</strong><br>timeout / error</td>
@@ -1120,7 +1120,7 @@
       <div class="decision">
         <div class="decision-card yes">
           <h3>已有：phase + 单帧几何分类</h3>
-          <p>代码会判断 <code>DISABLED</code>、<code>AUTO_ARMED</code>、<code>AUTO_RUNNING</code>、<code>bits == 0</code>、传感器超时等条件，并进入 <code>STOPPED</code>、<code>TRACK_LINE</code>、<code>LINE_LOST</code>、<code>SENSOR_FAULT</code> 等 phase。<code>line_interpreter</code> 还会输出 <code>CENTERED</code>、<code>LEFT_OFFSET</code>、<code>RIGHT_OFFSET</code>、<code>LOST</code>、<code>SENSOR_FAULT</code> 这些当前帧几何状态。</p>
+          <p>代码会判断 <code>DISABLED</code>、<code>AUTO_ARMED</code>、<code>AUTO_RUNNING</code>、<code>bits == 0</code>、传感器超时等条件，并进入 <code>STOPPED</code>、<code>TRACK_LINE</code>、<code>LINE_LOST</code>、<code>SENSOR_FAULT</code> 等 phase。<code>line_interpreter</code> 还会输出 <code>CENTERED</code>、<code>LEFT_OFFSET</code>、<code>RIGHT_OFFSET</code>、<code>LOST</code>、<code>SENSOR_FAULT</code> 这些当前帧几何状态。当前主干还会在丢线找回后记录 <code>UNDERSTEER</code> 或 <code>OSCILLATION_SKEW</code>，但这个记录只是 telemetry，不参与下一帧 PID 决策。</p>
         </div>
         <div class="decision-card no">
           <h3>没有：连续 N 帧灯型状态机</h3>
@@ -1190,7 +1190,7 @@
             <li><code>CENTER_STABLE</code>：连续 N 帧 offset 在 -1 到 +1。</li>
             <li><code>LEFT_DEPARTING</code>：连续 N 帧 offset 为负并增大。</li>
             <li><code>RIGHT_DEPARTING</code>：连续 N 帧 offset 为正并增大。</li>
-            <li><code>LINE_LOST_LEFT</code> / <code>LINE_LOST_RIGHT</code>：根据丢线前趋势确认搜索方向。</li>
+            <li><code>RECOVERY_UNDERSTEER</code> / <code>RECOVERY_OSCILLATION_SKEW</code>：把当前 telemetry 记录升级成连续帧几何状态。</li>
             <li><code>WIDE_LINE</code> / <code>INTERSECTION</code>：有效探头数过多时不按普通 PID 处理。</li>
           </ul>
         </div>
@@ -1248,7 +1248,7 @@
       <div class="source">
         <a href="../components/vehicle_state/vehicle_state.c"><b>vehicle_state.c</b>整车主状态切换、调参锁、故障、OTA。</a>
         <a href="../components/control/line_trace_controller.c"><b>line_trace_controller.c</b>20ms 控制循环、参数读取、策略输出应用。</a>
-        <a href="../components/control/line_trace_policy.c"><b>line_trace_policy.c</b>巡线 phase、PID、速度衰减、丢线搜索。</a>
+        <a href="../components/control/motion_policy.c"><b>motion_policy.c</b>巡线 phase、PID、速度衰减、丢线扩幅摆扫。</a>
         <a href="../components/line_sensor/line_sensor_uart.c"><b>line_sensor_uart.c</b>八路串口帧解析、黑白映射、offset 计算。</a>
       </div>
     </section>

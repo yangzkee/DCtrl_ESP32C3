@@ -40,9 +40,9 @@ These features should be added later as new policy states or a separate route pl
 - Sends the final command to `chassis_uart`.
 - Publishes telemetry.
 
-The motion-control code is now split into five layers. This refactor is intentionally behavior-preserving: the current line-following speed, PID, lost-line search, and safety behavior stay aligned with the first stable tuning release.
+The motion-control code is now split into five layers. The first refactor was intentionally behavior-preserving; current strategy changes should still preserve the stable line-following feel unless this document explicitly names the changed behavior.
 
-- `Layer 0: motion_contracts`: the single source of truth for motion constants and rules, including line active-bit quality, offset curve, speed-gear mapping, search turn increment, speed-retention ratio, and common clamp helpers.
+- `Layer 0: motion_contracts`: the single source of truth for motion constants and rules, including line active-bit quality, offset curve, speed-gear mapping, search turn increment, recovery sweep range, speed-retention ratio, and common clamp helpers.
 - `Layer 1: motion_inputs`: converts vehicle/system state and raw sensor samples into a normalized policy input. It applies mechanical operations such as run-mode mapping and optional sensor-bit inversion, but it does not decide what the line shape means.
 - `Layer 2: line_interpreter`: interprets the normalized line sample into geometric facts, including active sensor count, line quality, lost-line flag, curved offset error, and a simple current-frame pattern state.
 - `Layer 3: motion_policy`: turns run mode plus interpreted geometry into a motion intent. This is where the existing phase transitions, PID calculation, adaptive speed reduction, and lost-line search direction live.
@@ -56,8 +56,10 @@ Current line phases:
 - `MANUAL_TEST`: short tuning-session manual command.
 - `ACQUIRE_LINE`: auto is armed and the vehicle remains stopped while the operator starts explicitly.
 - `TRACK_LINE`: normal circular-line following with PID steering.
-- `LINE_LOST`: no active line bits while running; the policy commands zero linear speed plus a safe Z search increment opposite the last normal tracking turn.
+- `LINE_LOST`: no active line bits while running; the policy commands zero linear speed plus an expanding oscillating sweep. It starts with a small left probe, crosses right, then grows left/right amplitude until the line returns or the sweep reaches the bounded range.
 - `SENSOR_FAULT`: sensor timeout or parse/read error; while running, the policy keeps sending a safe zero-linear search command instead of faulting immediately.
+
+Lost-line recovery is intentionally split into two outputs. The motion output is only the safe sweep command: `linear_mm_s=0`, `angular_mdeg_s=+/-6000 mdeg/cmd`, sweep amplitude step `12000 mdeg`, and sweep bound `+/-90000 mdeg`. The diagnostic output records the first geometric relation inferred when the line comes back: `UNDERSTEER` means the successful recovery direction matched the last valid tracking turn, while `OSCILLATION_SKEW` means it came back in the opposite direction. This relation is telemetry only for now; it does not yet change PID gains, speed, or future steering decisions.
 
 To modify the line-following behavior, choose the layer by intent:
 

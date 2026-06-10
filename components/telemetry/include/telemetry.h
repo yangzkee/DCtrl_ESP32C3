@@ -18,6 +18,10 @@ typedef struct {
     uint8_t active_sensor_count;
     float pid_output_mdeg_s;
     char line_phase[24];
+    char recovery_relation[24];
+    int32_t recovery_angle_mdeg;
+    int32_t recovery_target_mdeg;
+    int32_t recovery_direction_mdeg;
 } telemetry_controller_state_t;
 
 void telemetry_update_line_sample(const line_sensor_sample_t *sample);
