@@ -42,7 +42,7 @@ These features should be added later as new policy states or a separate route pl
 
 The motion-control code is now split into five layers. The first refactor was intentionally behavior-preserving; current strategy changes should still preserve the stable line-following feel unless this document explicitly names the changed behavior.
 
-- `Layer 0: motion_contracts`: the single source of truth for motion constants and rules, including line active-bit quality, offset curve, speed-gear mapping, search turn increment, recovery sweep range, speed-retention ratio, and common clamp helpers.
+- `Layer 0: motion_contracts`: the single source of truth for motion constants and rules, including line active-bit quality, offset curve, speed-gear mapping, timed recovery sweep behavior, speed-retention ratio, and common clamp helpers.
 - `Layer 1: motion_inputs`: converts vehicle/system state and raw sensor samples into a normalized policy input. It applies mechanical operations such as run-mode mapping and optional sensor-bit inversion, but it does not decide what the line shape means.
 - `Layer 2: line_interpreter`: interprets the normalized line sample into geometric facts, including active sensor count, line quality, lost-line flag, curved offset error, and a simple current-frame pattern state.
 - `Layer 3: motion_policy`: turns run mode plus interpreted geometry into a motion intent. This is where the existing phase transitions, PID calculation, adaptive speed reduction, and lost-line recovery state machine live.
@@ -58,10 +58,10 @@ Current line phases:
 - `MANUAL_TEST`: short tuning-session manual command.
 - `ACQUIRE_LINE`: auto is armed and the vehicle remains stopped while the operator starts explicitly.
 - `TRACK_LINE`: normal circular-line following with PID steering.
-- `LINE_LOST`: no active line bits while running; the policy commands zero linear speed plus an origin-relative recovery sweep. The lost-line pose is the zero point. It runs the explicit target sequence `L10, R10, L25, R25, L45, R45, L66, R66, L90, R90, R360`. If the line still does not return at `R360`, the plan requests `STOP_TO_IDLE`.
+- `LINE_LOST`: no active line bits while running; the policy keeps sending DFLink `Motion_Velocity` with `linear_mm_s=0` and an expanding timed left/right search. The fixed sequence is left `0.8 s`, right `1.6 s`, left `3.2 s`, right `6.4 s`, left `12.8 s`, right `25.6 s`, then right `30.0 s`. If the line still does not return after the final segment, the plan requests `STOP_TO_IDLE`.
 - `SENSOR_FAULT`: sensor timeout or parse/read error; while running, the policy keeps sending a safe zero-linear search command instead of faulting immediately.
 
-Lost-line recovery is intentionally split into two outputs. The motion output is the safe recovery command through `control_plan_t`: `linear_mm_s=0`, `angular_mdeg_s=+/-6000 mdeg/cmd`, staged origin-relative sweep targets, one-way outer search, and finally `STOP_TO_IDLE` when recovery fails. The diagnostic output records the first geometric relation inferred when the line comes back: `UNDERSTEER` means the successful recovery direction matched the last valid tracking turn, while `OSCILLATION_SKEW` means it came back in the opposite direction. This relation is telemetry only for now; it does not yet change PID gains, speed, or future steering decisions.
+Lost-line recovery is intentionally split into two outputs. The motion output is the safe recovery command through `control_plan_t`: `SEND_MOTION` with `linear_mm_s=0` and `angular_mdeg_s` set to the current gear's normal turn limit. Gear 1/2/3 use `8000/10000/10000 mdeg/cmd`. The diagnostic output records the first geometric relation inferred when the line comes back: `UNDERSTEER` means the successful recovery direction matched the last valid tracking turn, while `OSCILLATION_SKEW` means it came back in the opposite direction. Telemetry exposes `segment_index`, `elapsed_ms`, and `target_ms` for the timed sweep. This relation is telemetry only for now; it does not yet change PID gains, speed, or future steering decisions.
 
 To modify the line-following behavior, choose the layer by intent:
 
@@ -444,7 +444,7 @@ Current ESP32-C3 smoke build verification passes and generates `build-esp32c3/DC
 
 ## Chassis Protocol
 
-The chassis driver sends DFLink `Motion_Velocity`:
+The chassis driver sends DFLink `Motion_Velocity` for continuous line-following speed commands:
 
 - Frame: `0xDF target source A B LEN payload 0xFD sumL sumH`.
 - Target id: `0x01`.

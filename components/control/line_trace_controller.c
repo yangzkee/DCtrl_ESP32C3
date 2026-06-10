@@ -40,9 +40,10 @@ static bool get_bool_param(const char *id, bool fallback)
 
 static void read_policy_config(line_trace_policy_config_t *config)
 {
+    const int32_t gear = get_int_param("speed.gear", 2);
     int32_t base_speed_mm_s = 600;
     int32_t max_turn_mdeg_s = 10000;
-    motion_speed_profile_from_gear(get_int_param("speed.gear", 2), &base_speed_mm_s, &max_turn_mdeg_s);
+    motion_speed_profile_from_gear(gear, &base_speed_mm_s, &max_turn_mdeg_s);
 
     config->base_speed_mm_s = base_speed_mm_s;
     config->max_turn_mdeg_s = max_turn_mdeg_s;
@@ -67,6 +68,9 @@ static void update_policy_telemetry(const line_trace_policy_output_t *output)
         .recovery_angle_mdeg = output->recovery_angle_mdeg,
         .recovery_target_mdeg = output->recovery_target_mdeg,
         .recovery_direction_mdeg = output->recovery_direction_mdeg,
+        .recovery_segment_index = output->recovery_segment_index,
+        .recovery_elapsed_ms = output->recovery_elapsed_ms,
+        .recovery_target_ms = output->recovery_target_ms,
     };
     strlcpy(state.line_phase,
             line_trace_policy_phase_name(output->phase),
@@ -121,6 +125,7 @@ static void controller_task(void *arg)
         vehicle_state_get_snapshot(&vehicle);
         line_trace_policy_input_t input = {0};
         motion_inputs_from_vehicle(&input, &vehicle);
+        input.now_ms = vehicle_state_now_ms();
 
         if (input.run_mode != LINE_TRACE_RUN_MANUAL_TEST &&
             vehicle.motion_state != VEHICLE_MOTION_OTA_UPDATE) {

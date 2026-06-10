@@ -1,6 +1,6 @@
 #pragma once
 
-#include "chassis_uart.h"
+#include "chassis_motion_contracts.h"
 #include "vehicle_state.h"
 
 #ifdef __cplusplus

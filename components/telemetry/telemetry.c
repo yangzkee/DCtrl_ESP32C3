@@ -109,7 +109,8 @@ esp_err_t telemetry_build_json(char *buffer, size_t buffer_size)
                            "\"controller\":{\"line_phase\":\"%s\",\"lost_line\":%s,\"line_quality\":%u,"
                            "\"active_sensor_count\":%u,\"pid_output_mdeg_s\":%.2f,"
                            "\"recovery\":{\"relation\":\"%s\",\"stage\":\"%s\",\"angle_mdeg\":%ld,"
-                           "\"target_mdeg\":%ld,\"direction_mdeg\":%ld}}}",
+                           "\"target_mdeg\":%ld,\"direction_mdeg\":%ld,"
+                           "\"segment_index\":%u,\"elapsed_ms\":%lu,\"target_ms\":%lu}}}",
                            (unsigned long long)(esp_timer_get_time() / 1000ULL),
                            (unsigned long)param_store_version(),
                            vehicle_motion_state_name(vehicle.motion_state),
@@ -141,7 +142,10 @@ esp_err_t telemetry_build_json(char *buffer, size_t buffer_size)
                            recovery_stage[0] == '\0' ? "NONE" : recovery_stage,
                            (long)controller_state.recovery_angle_mdeg,
                            (long)controller_state.recovery_target_mdeg,
-                           (long)controller_state.recovery_direction_mdeg);
+                           (long)controller_state.recovery_direction_mdeg,
+                           controller_state.recovery_segment_index,
+                           (unsigned long)controller_state.recovery_elapsed_ms,
+                           (unsigned long)controller_state.recovery_target_ms);
 
     return written > 0 && written < (int)buffer_size ? ESP_OK : ESP_ERR_INVALID_SIZE;
 }

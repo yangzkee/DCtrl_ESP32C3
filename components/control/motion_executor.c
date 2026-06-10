@@ -20,4 +20,7 @@ void motion_executor_build_output(const motion_intent_t *intent, line_trace_poli
     output->recovery_angle_mdeg = intent->recovery_angle_mdeg;
     output->recovery_target_mdeg = intent->recovery_target_mdeg;
     output->recovery_direction_mdeg = intent->recovery_direction_mdeg;
+    output->recovery_segment_index = intent->recovery_segment_index;
+    output->recovery_elapsed_ms = intent->recovery_elapsed_ms;
+    output->recovery_target_ms = intent->recovery_target_ms;
 }

@@ -12,6 +12,7 @@ extern "C" {
 #endif
 
 typedef struct {
+    uint32_t now_ms;
     line_trace_phase_t phase;
     control_plan_t plan;
     bool lost_line;
@@ -23,6 +24,9 @@ typedef struct {
     int32_t recovery_angle_mdeg;
     int32_t recovery_target_mdeg;
     int32_t recovery_direction_mdeg;
+    uint8_t recovery_segment_index;
+    uint32_t recovery_elapsed_ms;
+    uint32_t recovery_target_ms;
 } motion_intent_t;
 
 void motion_policy_plan(line_trace_policy_runtime_t *runtime,

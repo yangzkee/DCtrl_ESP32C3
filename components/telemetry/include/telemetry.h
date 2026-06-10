@@ -23,6 +23,9 @@ typedef struct {
     int32_t recovery_angle_mdeg;
     int32_t recovery_target_mdeg;
     int32_t recovery_direction_mdeg;
+    uint8_t recovery_segment_index;
+    uint32_t recovery_elapsed_ms;
+    uint32_t recovery_target_ms;
 } telemetry_controller_state_t;
 
 void telemetry_update_line_sample(const line_sensor_sample_t *sample);

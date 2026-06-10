@@ -7,16 +7,11 @@
 #include "esp_err.h"
 
 #include "board_profile.h"
+#include "chassis_motion_contracts.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
-
-typedef struct {
-    int32_t linear_mm_s;
-    // Protocol Z is an angle increment per command, represented in millidegrees.
-    int32_t angular_mdeg_s;
-} chassis_motion_cmd_t;
 
 typedef struct {
     char command[16];

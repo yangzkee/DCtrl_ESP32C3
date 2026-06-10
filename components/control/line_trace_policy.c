@@ -31,6 +31,10 @@ void line_trace_policy_reset_pid(line_trace_policy_runtime_t *runtime)
     runtime->recovery_amplitude_mdeg = 0;
     runtime->recovery_last_direction_mdeg = 0;
     runtime->recovery_reference_turn_mdeg = 0;
+    runtime->recovery_segment_active = false;
+    runtime->recovery_segment_index = 0;
+    runtime->recovery_segment_started_ms = 0;
+    runtime->recovery_segment_duration_ms = 0;
     runtime->recovery_relation = LINE_TRACE_RECOVERY_NONE;
     runtime->recovery_stage = LINE_TRACE_RECOVERY_STAGE_NONE;
 }

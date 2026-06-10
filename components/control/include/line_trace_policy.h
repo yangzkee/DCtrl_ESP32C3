@@ -3,7 +3,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-#include "chassis_uart.h"
+#include "chassis_motion_contracts.h"
 #include "control_plan.h"
 #include "line_sensor_uart.h"
 #include "vehicle_state.h"
@@ -74,6 +74,10 @@ typedef struct {
     int32_t recovery_amplitude_mdeg;
     int32_t recovery_last_direction_mdeg;
     int32_t recovery_reference_turn_mdeg;
+    bool recovery_segment_active;
+    uint8_t recovery_segment_index;
+    uint32_t recovery_segment_started_ms;
+    uint32_t recovery_segment_duration_ms;
     line_trace_recovery_relation_t recovery_relation;
     line_trace_recovery_stage_t recovery_stage;
 } line_trace_policy_runtime_t;
@@ -81,6 +85,7 @@ typedef struct {
 typedef struct {
     line_trace_run_mode_t run_mode;
     line_trace_sensor_status_t sensor_status;
+    uint32_t now_ms;
     line_sensor_sample_t sample;
     chassis_motion_cmd_t manual_cmd;
 } line_trace_policy_input_t;
@@ -97,6 +102,9 @@ typedef struct {
     int32_t recovery_angle_mdeg;
     int32_t recovery_target_mdeg;
     int32_t recovery_direction_mdeg;
+    uint8_t recovery_segment_index;
+    uint32_t recovery_elapsed_ms;
+    uint32_t recovery_target_ms;
 } line_trace_policy_output_t;
 
 void line_trace_policy_init(line_trace_policy_runtime_t *runtime);

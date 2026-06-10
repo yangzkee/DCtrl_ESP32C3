@@ -32,10 +32,10 @@
 
 - Goal: Convert line offset into chassis motion only when the vehicle state allows motion.
 - Inputs: `line_sensor_sample_t`, live parameters from `param_store`, and `vehicle_state_snapshot_t`.
-- Outputs: stop commands in safe/tuning/armed/fault/OTA states, short manual-test commands in `MANUAL_TEST`, PID motion commands in `AUTO_RUNNING`, slow-then-fast quadratic line-speed reduction when the active line drifts away from `x4/x5`, slow-then-fast quadratic turn growth from normalized offset, and zero-linear safe Z search commands when line bits are lost.
+- Outputs: stop commands in safe/tuning/armed/fault/OTA states, short manual-test commands in `MANUAL_TEST`, PID motion commands in `AUTO_RUNNING`, slow-then-fast quadratic line-speed reduction when the active line drifts away from `x4/x5`, slow-then-fast quadratic turn growth from normalized offset, and zero-linear timed speed-command recovery when line bits are lost.
 - Speed Profile: gear 1 sends up to `250 mm/s` with `8000 mdeg/cmd` turn limit; gear 2 sends up to `600 mm/s` with `10000 mdeg/cmd`; gear 3 sends up to `1000 mm/s` with `10000 mdeg/cmd`. At the outermost tracked offsets, adaptive slowdown keeps roughly 45% of the selected gear speed.
 - Independent Test: Verify boot telemetry shows `SAFE_IDLE`, `start_auto` is required before PID motion, lost line enters `LINE_LOST` phase with `linear_mm_s=0`, and BLE disconnect while active sends stop.
-- Failure Rules: Line loss and transient sensor read issues during auto-running do not enter `FAULT`; they command zero linear speed and a safe Z search increment opposite the last normal tracking turn direction. BLE disconnect while active immediately stops and returns to `SAFE_IDLE`. Chassis send failure still enters `CHASSIS_SEND_FAILED`.
+- Failure Rules: Line loss and transient sensor read issues during auto-running do not enter `FAULT`; line loss uses the fixed timed left/right speed-command sweep and transient sensor read issues keep a conservative zero-linear search command. If the final 30 s timed segment finishes without line recovery, automatic line tracing exits to `SAFE_IDLE`. BLE disconnect while active immediately stops and returns to `SAFE_IDLE`. Chassis send failure still enters `CHASSIS_SEND_FAILED`.
 - Next Integration Boundary: Later PID tuning and chassis direction confirmation.
 
 ## Vehicle State

@@ -1088,7 +1088,7 @@
               <tr>
                 <td><strong>自动运行且丢线</strong><br><code>bits == 0</code></td>
                 <td><code>LINE_LOST</code></td>
-                <td>线速度为 0；转向使用 <code>6000 mdeg/cmd</code>，先扩幅摆扫，再单向全角搜索</td>
+                <td>线速度为 0；使用速度指令按时间分段左右摆扫，最后继续右转搜索</td>
                 <td>记录 <code>SWEEP</code> / <code>ONE_WAY_SEARCH</code> / <code>FAILED</code>、相对丢线原点的角度、目标角度、找回方向和丢线前最后一次正常转向</td>
                 <td>不是立刻停车，而是以丢线位置为零点，按 <code>L10/R10/L25/R25/L45/R45/L66/R66/L90/R90/R360</code> 搜索；仍失败则停车并回到待驶。</td>
               </tr>
