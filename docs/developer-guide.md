@@ -239,7 +239,7 @@ BLE debug transport:
 - Short TX reads return the JSON response directly.
 - Long TX reads return one or more chunk envelopes. Each envelope has `type:"ble_chunk"`, `seq`, `offset`, `total`, `done`, and `data`. The client must append `data` until `done:true`, then parse the assembled JSON.
 
-Compact BLE frames for the WeChat mini program:
+Compact BLE frames for the DHelper mini program `line-tuning` feature:
 
 - `G\n`: read the four phone-facing params.
 - Response: `P<kp>,<ki>,<kd>,<gear>\n`, for example `P9000,0,0,2`.
@@ -254,7 +254,7 @@ Compact BLE frames for the WeChat mini program:
 
 After `N=<name>` or `N=*`, disconnect and scan again. BLE advertising fields are refreshed when advertising restarts.
 
-The mini program line-tracing controls use BLE JSON requests on the same RX/TX
+The DHelper mini program line-tracing controls use BLE JSON requests on the same RX/TX
 characteristics:
 
 - `一键自检`: sends `get_telemetry`, sends `clear_fault` only when telemetry

@@ -63,7 +63,7 @@
 - Outputs: JSON response with schema, params, telemetry, state acknowledgements, update acknowledgements, or error messages.
 - Independent Test: Feed synthetic JSON messages and check response shape, state transitions, parameter gate, and manual-motion safety limits.
 - Failure Rules: Mutating parameter messages outside `PARAM_TUNING` return `enter_tuning_required`; invalid states return state-aware errors.
-- Next Integration Boundary: Fallback Wi-Fi diagnostics and Mac BLE tester use the same protocol; the WeChat mini program uses the compact BLE PID/gear frame.
+- Next Integration Boundary: Fallback Wi-Fi diagnostics and Mac BLE tester use the same protocol; the DHelper mini program `line-tuning` feature uses the compact BLE PID/gear frame.
 
 ## Wireless Debug Server
 
@@ -73,7 +73,7 @@
 - Independent Test: Use `tools/ble_debug_tester.swift --command G --append-newline --expect-prefix P`; then send `W1` and call `/api/schema`, `/api/params`, `/api/telemetry`, and `/api/ota/status`.
 - Name Control: `N` reads the BLE name, `N=<name>` saves a complete 1-20 UTF-8 byte name using CJK Chinese/ASCII letters/digits/`-`/`_`, and `N=*` restores the default Bluetooth-MAC name.
 - Failure Rules: Compact parameter writes return `E:RANGE`, `E:FAULT`, `E:BUSY`, or `E:SAVE`; Wi-Fi startup failures do not disable BLE.
-- Next Integration Boundary: WeChat mini program uses only compact `G`/`S` PID+gear frames; Wi-Fi remains a fallback diagnostics path.
+- Next Integration Boundary: DHelper mini program `line-tuning` uses only compact `G`/`S` PID+gear frames; Wi-Fi remains a fallback diagnostics path.
 
 ## Firmware OTA
 
