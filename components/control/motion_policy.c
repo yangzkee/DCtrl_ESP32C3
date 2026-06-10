@@ -71,25 +71,22 @@ static void set_fixed_search_intent(line_trace_policy_runtime_t *runtime,
     runtime->has_last_cmd = true;
 }
 
-static int32_t next_sweep_amplitude_mdeg(int32_t current_mdeg)
-{
-    if (current_mdeg < MOTION_LINE_RECOVERY_SWEEP_FIRST_MDEG) {
-        return MOTION_LINE_RECOVERY_SWEEP_FIRST_MDEG;
-    }
-    if (current_mdeg < 12000) {
-        return 12000;
-    }
-    if (current_mdeg < 24000) {
-        return 24000;
-    }
-    if (current_mdeg < MOTION_LINE_RECOVERY_SWEEP_INFLECTION_MDEG) {
-        return MOTION_LINE_RECOVERY_SWEEP_INFLECTION_MDEG;
-    }
-    if (current_mdeg < 66000) {
-        return 66000;
-    }
-    return MOTION_LINE_RECOVERY_SWEEP_MAX_MDEG;
-}
+static const int32_t k_recovery_targets_mdeg[] = {
+    -10000,
+    10000,
+    -25000,
+    25000,
+    -45000,
+    45000,
+    -66000,
+    66000,
+    -MOTION_LINE_RECOVERY_SWEEP_MAX_MDEG,
+    MOTION_LINE_RECOVERY_SWEEP_MAX_MDEG,
+    MOTION_LINE_RECOVERY_OUTER_LIMIT_MDEG,
+};
+
+static const size_t k_recovery_target_count =
+    sizeof(k_recovery_targets_mdeg) / sizeof(k_recovery_targets_mdeg[0]);
 
 static void start_sweep_recovery_if_needed(line_trace_policy_runtime_t *runtime)
 {
@@ -100,21 +97,12 @@ static void start_sweep_recovery_if_needed(line_trace_policy_runtime_t *runtime)
     runtime->recovery_active = true;
     runtime->recovery_stage = LINE_TRACE_RECOVERY_STAGE_SWEEP;
     runtime->recovery_angle_mdeg = 0;
-    runtime->recovery_amplitude_mdeg = MOTION_LINE_RECOVERY_SWEEP_FIRST_MDEG;
-    runtime->recovery_target_mdeg = -MOTION_LINE_RECOVERY_SWEEP_FIRST_MDEG;
+    runtime->recovery_amplitude_mdeg = 0;
+    runtime->recovery_target_mdeg = k_recovery_targets_mdeg[0];
     runtime->recovery_last_direction_mdeg = 0;
     runtime->recovery_reference_turn_mdeg =
         runtime->has_last_tracking_angular ? runtime->last_tracking_angular_mdeg_s : 0;
     runtime->recovery_relation = LINE_TRACE_RECOVERY_NONE;
-}
-
-static void start_one_way_recovery(line_trace_policy_runtime_t *runtime, int32_t direction)
-{
-    if (direction == 0) {
-        direction = -1;
-    }
-    runtime->recovery_stage = LINE_TRACE_RECOVERY_STAGE_ONE_WAY_SEARCH;
-    runtime->recovery_target_mdeg = direction * MOTION_LINE_RECOVERY_OUTER_LIMIT_MDEG;
 }
 
 static void advance_recovery_target_if_reached(line_trace_policy_runtime_t *runtime)
@@ -132,24 +120,22 @@ static void advance_recovery_target_if_reached(line_trace_policy_runtime_t *runt
         return;
     }
 
-    if (motion_abs_i32(runtime->recovery_target_mdeg) >= MOTION_LINE_RECOVERY_SWEEP_MAX_MDEG) {
-        start_one_way_recovery(runtime, sign_i32(runtime->recovery_target_mdeg));
+    for (size_t i = 0; i < k_recovery_target_count; ++i) {
+        if (runtime->recovery_target_mdeg != k_recovery_targets_mdeg[i]) {
+            continue;
+        }
+        if (i + 1 >= k_recovery_target_count) {
+            runtime->recovery_stage = LINE_TRACE_RECOVERY_STAGE_FAILED;
+            return;
+        }
+        runtime->recovery_target_mdeg = k_recovery_targets_mdeg[i + 1];
+        if (motion_abs_i32(runtime->recovery_target_mdeg) > MOTION_LINE_RECOVERY_SWEEP_MAX_MDEG) {
+            runtime->recovery_stage = LINE_TRACE_RECOVERY_STAGE_ONE_WAY_SEARCH;
+        }
         return;
     }
 
-    if (motion_abs_i32(runtime->recovery_target_mdeg) >= MOTION_LINE_RECOVERY_SWEEP_INFLECTION_MDEG) {
-        runtime->recovery_amplitude_mdeg = next_sweep_amplitude_mdeg(runtime->recovery_amplitude_mdeg);
-        runtime->recovery_target_mdeg = sign_i32(runtime->recovery_target_mdeg) * runtime->recovery_amplitude_mdeg;
-        return;
-    }
-
-    if (runtime->recovery_target_mdeg < 0) {
-        runtime->recovery_target_mdeg = runtime->recovery_amplitude_mdeg;
-        return;
-    }
-
-    runtime->recovery_amplitude_mdeg = next_sweep_amplitude_mdeg(runtime->recovery_amplitude_mdeg);
-    runtime->recovery_target_mdeg = -runtime->recovery_amplitude_mdeg;
+    runtime->recovery_stage = LINE_TRACE_RECOVERY_STAGE_FAILED;
 }
 
 static int32_t next_sweep_recovery_turn(line_trace_policy_runtime_t *runtime)

@@ -458,8 +458,8 @@
       <h3 class="strategy-title"><span class="sid">S17</span>丢线找回</h3>
       <span class="tag motion">找线</span><span class="tag safety">安全</span>
       <table>
-        <tr><th>策略</th><td>自动运行中全丢线不立即停车。线速度置零，Z 使用以初始丢线位置为零点的扩幅摆扫找线。先在左右 <code>6/12/24 deg</code> 小范围探测；某一侧达到 <code>45 deg</code> 后进入拐点，不再回到另一侧，而是在同一侧继续扩大到 <code>66/90 deg</code>。任一侧达到 90 度仍未找回线后，沿当前方向单向搜索到相对初始丢线位置 <code>360 deg</code>；若仍未找回，停车并退出自动循线回到 <code>SAFE_IDLE</code>。</td></tr>
-        <tr><th>当前值</th><td><code>linear_mm_s=0</code>，<code>search turn=6000 mdeg/cmd</code>，原点为丢线瞬间；小范围摆扫目标为 <code>6/12/24 deg</code>，同侧拐点为 <code>45 deg</code>，同侧外扩为 <code>66/90 deg</code>，单向搜索外限为 <code>360 deg</code>。</td></tr>
+        <tr><th>策略</th><td>自动运行中全丢线不立即停车。线速度置零，Z 使用以初始丢线位置为零点的扩幅摆扫找线。固定目标序列为左 <code>10 deg</code>、右 <code>10 deg</code>、左 <code>25 deg</code>、右 <code>25 deg</code>、左 <code>45 deg</code>、右 <code>45 deg</code>、左 <code>66 deg</code>、右 <code>66 deg</code>、左 <code>90 deg</code>、右 <code>90 deg</code>，再继续向右搜索到相对初始丢线位置 <code>360 deg</code>；若仍未找回，停车并退出自动循线回到 <code>SAFE_IDLE</code>。</td></tr>
+        <tr><th>当前值</th><td><code>linear_mm_s=0</code>，<code>search turn=6000 mdeg/cmd</code>，原点为丢线瞬间；摆扫目标为 <code>L10/R10/L25/R25/L45/R45/L66/R66/L90/R90/R360</code>。</td></tr>
         <tr><th>几何记录</th><td>找回线时，若找回方向与丢线前最后一次有效转向方向相同，记录 <code>UNDERSTEER</code>，表示可能转向不足或冲出弯道；若方向相反，记录 <code>OSCILLATION_SKEW</code>，表示可能存在左右摆动或车身与线不平行。当前版本只记录，不绑定到控制输出。</td></tr>
         <tr><th>参考命名</th><td>本策略登记为“扩幅摆扫找线”，英文可称 <code>expanding oscillating sweep recovery</code>。它借鉴常见 line follower 丢线后原地旋转重捕线，以及搜索理论里从已知丢失点向外扩展搜索范围的思路。</td></tr>
         <tr><th>实现位置</th><td><code>components/control/include/control_plan.h</code>、<code>components/control/motion_contracts.h</code>、<code>components/control/motion_policy.c</code>、<code>components/telemetry/telemetry.c</code></td></tr>
