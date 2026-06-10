@@ -3,6 +3,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+#include "control_plan.h"
 #include "line_interpreter.h"
 #include "line_trace_policy.h"
 
@@ -12,16 +13,13 @@ extern "C" {
 
 typedef struct {
     line_trace_phase_t phase;
-    chassis_motion_cmd_t cmd;
-    bool should_send_motion;
-    bool should_stop;
-    bool enter_fault;
-    vehicle_fault_reason_t fault_reason;
+    control_plan_t plan;
     bool lost_line;
     uint8_t line_quality;
     uint8_t active_sensor_count;
     float pid_output_mdeg_s;
     line_trace_recovery_relation_t recovery_relation;
+    line_trace_recovery_stage_t recovery_stage;
     int32_t recovery_angle_mdeg;
     int32_t recovery_target_mdeg;
     int32_t recovery_direction_mdeg;

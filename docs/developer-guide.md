@@ -45,10 +45,12 @@ The motion-control code is now split into five layers. The first refactor was in
 - `Layer 0: motion_contracts`: the single source of truth for motion constants and rules, including line active-bit quality, offset curve, speed-gear mapping, search turn increment, recovery sweep range, speed-retention ratio, and common clamp helpers.
 - `Layer 1: motion_inputs`: converts vehicle/system state and raw sensor samples into a normalized policy input. It applies mechanical operations such as run-mode mapping and optional sensor-bit inversion, but it does not decide what the line shape means.
 - `Layer 2: line_interpreter`: interprets the normalized line sample into geometric facts, including active sensor count, line quality, lost-line flag, curved offset error, and a simple current-frame pattern state.
-- `Layer 3: motion_policy`: turns run mode plus interpreted geometry into a motion intent. This is where the existing phase transitions, PID calculation, adaptive speed reduction, and lost-line search direction live.
-- `Layer 4: motion_executor`: turns the motion intent into the existing `line_trace_policy_output_t` contract. The controller remains the only layer that actually sends commands to `chassis_uart`.
+- `Layer 3: motion_policy`: turns run mode plus interpreted geometry into a motion intent. This is where the existing phase transitions, PID calculation, adaptive speed reduction, and lost-line recovery state machine live.
+- `Layer 4: motion_executor`: turns the motion intent into the existing `line_trace_policy_output_t` contract. The output carries a shared `control_plan_t`; the controller remains the only layer that actually applies vehicle-state actions or sends commands to `chassis_uart`.
 
-`components/control/line_trace_policy.c` remains the stable public wrapper around this pipeline. It has no UART or NVS access. Its input is the run request, sensor result, manual command, and PID/speed config. Its output is the line phase, motion command, controller telemetry, and optional fault request.
+`control_plan_t` is the shared control-command contract between strategy and execution. It separates chassis actions (`NONE`, `SEND_MOTION`, `STOP`) from vehicle-state actions (`NONE`, `STOP_TO_IDLE`, `ENTER_FAULT`). Strategy code must not call `vehicle_state_stop()` or `chassis_uart_send_motion()` directly; it only fills this plan. The controller is the execution boundary that interprets the plan.
+
+`components/control/line_trace_policy.c` remains the stable public wrapper around this pipeline. It has no UART or NVS access. Its input is the run request, sensor result, manual command, and PID/speed config. Its output is the line phase, shared control plan, and controller telemetry.
 
 Current line phases:
 
@@ -56,17 +58,17 @@ Current line phases:
 - `MANUAL_TEST`: short tuning-session manual command.
 - `ACQUIRE_LINE`: auto is armed and the vehicle remains stopped while the operator starts explicitly.
 - `TRACK_LINE`: normal circular-line following with PID steering.
-- `LINE_LOST`: no active line bits while running; the policy commands zero linear speed plus an expanding oscillating sweep. It starts with a small left probe, crosses right, then grows left/right amplitude until the line returns or the sweep reaches the bounded range.
+- `LINE_LOST`: no active line bits while running; the policy commands zero linear speed plus an expanding oscillating sweep. It probes left/right with the amplitude sequence `6, 12, 24, 45, 66, 90 deg`. If one side reaches `90 deg` with no line, it stops oscillating and continues in that direction until `360 deg`; if the line still does not return, the plan requests `STOP_TO_IDLE`.
 - `SENSOR_FAULT`: sensor timeout or parse/read error; while running, the policy keeps sending a safe zero-linear search command instead of faulting immediately.
 
-Lost-line recovery is intentionally split into two outputs. The motion output is only the safe sweep command: `linear_mm_s=0`, `angular_mdeg_s=+/-6000 mdeg/cmd`, sweep amplitude step `12000 mdeg`, and sweep bound `+/-90000 mdeg`. The diagnostic output records the first geometric relation inferred when the line comes back: `UNDERSTEER` means the successful recovery direction matched the last valid tracking turn, while `OSCILLATION_SKEW` means it came back in the opposite direction. This relation is telemetry only for now; it does not yet change PID gains, speed, or future steering decisions.
+Lost-line recovery is intentionally split into two outputs. The motion output is the safe recovery command through `control_plan_t`: `linear_mm_s=0`, `angular_mdeg_s=+/-6000 mdeg/cmd`, staged sweep targets, optional one-way full rotation, and finally `STOP_TO_IDLE` when recovery fails. The diagnostic output records the first geometric relation inferred when the line comes back: `UNDERSTEER` means the successful recovery direction matched the last valid tracking turn, while `OSCILLATION_SKEW` means it came back in the opposite direction. This relation is telemetry only for now; it does not yet change PID gains, speed, or future steering decisions.
 
 To modify the line-following behavior, choose the layer by intent:
 
 - Change constants, speed-gear rules, black/white semantics, line-quality thresholds, or protocol-level motion limits in `motion_contracts`.
 - Change how system state, sensor samples, future ODOM, or future vehicle pose are cached and normalized in `motion_inputs`.
 - Change line geometry, current-frame pattern classification, or future N-frame trend classification in `line_interpreter`.
-- Change line-following phases, PID behavior, adaptive speed policy, or lost-line search intent in `motion_policy`.
+- Change line-following phases, PID behavior, adaptive speed policy, lost-line search intent, or vehicle-state action requests in `motion_policy`.
 - Change final output shaping that is independent of strategy, such as future ramping or slew-rate limiting, in `motion_executor`.
 
 Keep UART, BLE, NVS, and board-pin details out of `line_interpreter`, `motion_policy`, and `motion_executor`.
@@ -97,15 +99,15 @@ Motion pipeline module definitions:
 - `motion_policy`
   - `Goal`: decide what motion the vehicle intends to perform.
   - `Inputs`: run mode, interpreted line geometry, PID parameters, speed profile, runtime memory.
-  - `Outputs`: `motion_intent_t` with phase, desired chassis command, telemetry fields, and optional fault intent.
+  - `Outputs`: `motion_intent_t` with phase, `control_plan_t`, telemetry fields, and optional vehicle-state action.
   - `Independent Test`: fixed input sequences must preserve the stable release outputs for stop, armed, track, line-lost, sensor-fault, and manual-test cases.
   - `Failure Rules`: no hardware send and no parameter storage.
   - `Next Integration Boundary`: future route strategy can feed this layer as a higher-level target.
 - `motion_executor`
-  - `Goal`: convert a motion intent into the legacy controller output contract.
+  - `Goal`: convert a motion intent into the controller output contract.
   - `Inputs`: `motion_intent_t`.
-  - `Outputs`: `line_trace_policy_output_t`.
-  - `Independent Test`: field-by-field copy should preserve telemetry and chassis command values.
+  - `Outputs`: `line_trace_policy_output_t` containing `control_plan_t`.
+  - `Independent Test`: field-by-field copy should preserve the control plan and telemetry values.
   - `Failure Rules`: no direct UART send; `line_trace_controller` remains the only hardware-send owner.
   - `Next Integration Boundary`: future smoothing that is independent of policy can be added here.
 

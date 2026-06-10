@@ -32,6 +32,7 @@ void line_trace_policy_reset_pid(line_trace_policy_runtime_t *runtime)
     runtime->recovery_last_direction_mdeg = 0;
     runtime->recovery_reference_turn_mdeg = 0;
     runtime->recovery_relation = LINE_TRACE_RECOVERY_NONE;
+    runtime->recovery_stage = LINE_TRACE_RECOVERY_STAGE_NONE;
 }
 
 void line_trace_policy_step(line_trace_policy_runtime_t *runtime,
@@ -84,6 +85,22 @@ const char *line_trace_recovery_relation_name(line_trace_recovery_relation_t rel
         return "OSCILLATION_SKEW";
     case LINE_TRACE_RECOVERY_NO_REFERENCE:
         return "NO_REFERENCE";
+    default:
+        return "UNKNOWN";
+    }
+}
+
+const char *line_trace_recovery_stage_name(line_trace_recovery_stage_t stage)
+{
+    switch (stage) {
+    case LINE_TRACE_RECOVERY_STAGE_NONE:
+        return "NONE";
+    case LINE_TRACE_RECOVERY_STAGE_SWEEP:
+        return "SWEEP";
+    case LINE_TRACE_RECOVERY_STAGE_FULL_ROTATION:
+        return "FULL_ROTATION";
+    case LINE_TRACE_RECOVERY_STAGE_FAILED:
+        return "FAILED";
     default:
         return "UNKNOWN";
     }

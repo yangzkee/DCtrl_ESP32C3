@@ -4,6 +4,7 @@
 #include <stdint.h>
 
 #include "chassis_uart.h"
+#include "control_plan.h"
 #include "line_sensor_uart.h"
 #include "vehicle_state.h"
 
@@ -40,6 +41,13 @@ typedef enum {
     LINE_TRACE_RECOVERY_NO_REFERENCE,
 } line_trace_recovery_relation_t;
 
+typedef enum {
+    LINE_TRACE_RECOVERY_STAGE_NONE = 0,
+    LINE_TRACE_RECOVERY_STAGE_SWEEP,
+    LINE_TRACE_RECOVERY_STAGE_FULL_ROTATION,
+    LINE_TRACE_RECOVERY_STAGE_FAILED,
+} line_trace_recovery_stage_t;
+
 typedef struct {
     int32_t base_speed_mm_s;
     int32_t max_turn_mdeg_s;
@@ -67,6 +75,7 @@ typedef struct {
     int32_t recovery_last_direction_mdeg;
     int32_t recovery_reference_turn_mdeg;
     line_trace_recovery_relation_t recovery_relation;
+    line_trace_recovery_stage_t recovery_stage;
 } line_trace_policy_runtime_t;
 
 typedef struct {
@@ -78,16 +87,13 @@ typedef struct {
 
 typedef struct {
     line_trace_phase_t phase;
-    chassis_motion_cmd_t cmd;
-    bool should_send_motion;
-    bool should_stop;
-    bool enter_fault;
-    vehicle_fault_reason_t fault_reason;
+    control_plan_t plan;
     bool lost_line;
     uint8_t line_quality;
     uint8_t active_sensor_count;
     float pid_output_mdeg_s;
     line_trace_recovery_relation_t recovery_relation;
+    line_trace_recovery_stage_t recovery_stage;
     int32_t recovery_angle_mdeg;
     int32_t recovery_target_mdeg;
     int32_t recovery_direction_mdeg;
@@ -101,6 +107,7 @@ void line_trace_policy_step(line_trace_policy_runtime_t *runtime,
                             line_trace_policy_output_t *output);
 const char *line_trace_policy_phase_name(line_trace_phase_t phase);
 const char *line_trace_recovery_relation_name(line_trace_recovery_relation_t relation);
+const char *line_trace_recovery_stage_name(line_trace_recovery_stage_t stage);
 
 #ifdef __cplusplus
 }

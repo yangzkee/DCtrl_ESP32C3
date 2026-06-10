@@ -24,6 +24,7 @@ static int32_t sign_i32(int32_t value)
 static void publish_recovery_state(const line_trace_policy_runtime_t *runtime, motion_intent_t *intent)
 {
     intent->recovery_relation = runtime->recovery_relation;
+    intent->recovery_stage = runtime->recovery_stage;
     intent->recovery_angle_mdeg = runtime->recovery_angle_mdeg;
     intent->recovery_target_mdeg = runtime->recovery_target_mdeg;
     intent->recovery_direction_mdeg = runtime->recovery_last_direction_mdeg;
@@ -32,10 +33,15 @@ static void publish_recovery_state(const line_trace_policy_runtime_t *runtime, m
 static void set_stop_intent(motion_intent_t *intent, line_trace_phase_t phase)
 {
     intent->phase = phase;
-    intent->cmd = (chassis_motion_cmd_t){0};
-    intent->should_send_motion = false;
-    intent->should_stop = true;
+    intent->plan.chassis_action = CONTROL_CHASSIS_ACTION_STOP;
+    intent->plan.chassis_cmd = (chassis_motion_cmd_t){0};
     intent->pid_output_mdeg_s = 0.0f;
+}
+
+static void set_stop_to_idle_intent(motion_intent_t *intent, line_trace_phase_t phase)
+{
+    set_stop_intent(intent, phase);
+    intent->plan.vehicle_action = CONTROL_VEHICLE_ACTION_STOP_TO_IDLE;
 }
 
 static int32_t search_turn_mdeg(const line_trace_policy_runtime_t *runtime)
@@ -56,13 +62,33 @@ static void set_fixed_search_intent(line_trace_policy_runtime_t *runtime,
                                     line_trace_phase_t phase)
 {
     intent->phase = phase;
-    intent->cmd.linear_mm_s = 0;
-    intent->cmd.angular_mdeg_s = search_turn_mdeg(runtime);
-    intent->should_send_motion = true;
+    intent->plan.chassis_action = CONTROL_CHASSIS_ACTION_SEND_MOTION;
+    intent->plan.chassis_cmd.linear_mm_s = 0;
+    intent->plan.chassis_cmd.angular_mdeg_s = search_turn_mdeg(runtime);
     intent->lost_line = true;
     intent->pid_output_mdeg_s = 0.0f;
-    runtime->last_cmd = intent->cmd;
+    runtime->last_cmd = intent->plan.chassis_cmd;
     runtime->has_last_cmd = true;
+}
+
+static int32_t next_sweep_amplitude_mdeg(int32_t current_mdeg)
+{
+    if (current_mdeg < MOTION_LINE_RECOVERY_SWEEP_FIRST_MDEG) {
+        return MOTION_LINE_RECOVERY_SWEEP_FIRST_MDEG;
+    }
+    if (current_mdeg < 12000) {
+        return 12000;
+    }
+    if (current_mdeg < 24000) {
+        return 24000;
+    }
+    if (current_mdeg < MOTION_LINE_RECOVERY_SWEEP_INFLECTION_MDEG) {
+        return MOTION_LINE_RECOVERY_SWEEP_INFLECTION_MDEG;
+    }
+    if (current_mdeg < 66000) {
+        return 66000;
+    }
+    return MOTION_LINE_RECOVERY_SWEEP_MAX_MDEG;
 }
 
 static void start_sweep_recovery_if_needed(line_trace_policy_runtime_t *runtime)
@@ -72,18 +98,42 @@ static void start_sweep_recovery_if_needed(line_trace_policy_runtime_t *runtime)
     }
 
     runtime->recovery_active = true;
+    runtime->recovery_stage = LINE_TRACE_RECOVERY_STAGE_SWEEP;
     runtime->recovery_angle_mdeg = 0;
-    runtime->recovery_amplitude_mdeg = MOTION_LINE_RECOVERY_SWEEP_STEP_MDEG;
-    runtime->recovery_target_mdeg = -MOTION_LINE_RECOVERY_SWEEP_STEP_MDEG;
+    runtime->recovery_amplitude_mdeg = MOTION_LINE_RECOVERY_SWEEP_FIRST_MDEG;
+    runtime->recovery_target_mdeg = -MOTION_LINE_RECOVERY_SWEEP_FIRST_MDEG;
     runtime->recovery_last_direction_mdeg = 0;
     runtime->recovery_reference_turn_mdeg =
         runtime->has_last_tracking_angular ? runtime->last_tracking_angular_mdeg_s : 0;
     runtime->recovery_relation = LINE_TRACE_RECOVERY_NONE;
 }
 
-static void advance_sweep_target_if_reached(line_trace_policy_runtime_t *runtime)
+static void start_full_rotation_recovery(line_trace_policy_runtime_t *runtime, int32_t direction)
+{
+    if (direction == 0) {
+        direction = -1;
+    }
+    runtime->recovery_stage = LINE_TRACE_RECOVERY_STAGE_FULL_ROTATION;
+    runtime->recovery_target_mdeg = direction * MOTION_LINE_RECOVERY_FULL_ROTATION_MDEG;
+}
+
+static void advance_recovery_target_if_reached(line_trace_policy_runtime_t *runtime)
 {
     if (runtime->recovery_angle_mdeg != runtime->recovery_target_mdeg) {
+        return;
+    }
+
+    if (runtime->recovery_stage == LINE_TRACE_RECOVERY_STAGE_FULL_ROTATION) {
+        runtime->recovery_stage = LINE_TRACE_RECOVERY_STAGE_FAILED;
+        return;
+    }
+
+    if (runtime->recovery_stage != LINE_TRACE_RECOVERY_STAGE_SWEEP) {
+        return;
+    }
+
+    if (motion_abs_i32(runtime->recovery_target_mdeg) >= MOTION_LINE_RECOVERY_SWEEP_MAX_MDEG) {
+        start_full_rotation_recovery(runtime, sign_i32(runtime->recovery_target_mdeg));
         return;
     }
 
@@ -92,19 +142,18 @@ static void advance_sweep_target_if_reached(line_trace_policy_runtime_t *runtime
         return;
     }
 
-    if (runtime->recovery_amplitude_mdeg < MOTION_LINE_RECOVERY_SWEEP_MAX_MDEG) {
-        runtime->recovery_amplitude_mdeg += MOTION_LINE_RECOVERY_SWEEP_STEP_MDEG;
-        runtime->recovery_amplitude_mdeg = motion_clamp_i32(runtime->recovery_amplitude_mdeg,
-                                                            MOTION_LINE_RECOVERY_SWEEP_STEP_MDEG,
-                                                            MOTION_LINE_RECOVERY_SWEEP_MAX_MDEG);
-    }
+    runtime->recovery_amplitude_mdeg = next_sweep_amplitude_mdeg(runtime->recovery_amplitude_mdeg);
     runtime->recovery_target_mdeg = -runtime->recovery_amplitude_mdeg;
 }
 
 static int32_t next_sweep_recovery_turn(line_trace_policy_runtime_t *runtime)
 {
     start_sweep_recovery_if_needed(runtime);
-    advance_sweep_target_if_reached(runtime);
+    advance_recovery_target_if_reached(runtime);
+
+    if (runtime->recovery_stage == LINE_TRACE_RECOVERY_STAGE_FAILED) {
+        return 0;
+    }
 
     const int32_t remaining = runtime->recovery_target_mdeg - runtime->recovery_angle_mdeg;
     const int32_t direction = sign_i32(remaining);
@@ -115,8 +164,8 @@ static int32_t next_sweep_recovery_turn(line_trace_policy_runtime_t *runtime)
     }
 
     runtime->recovery_angle_mdeg = motion_clamp_i32(runtime->recovery_angle_mdeg + command,
-                                                   -MOTION_LINE_RECOVERY_SWEEP_MAX_MDEG,
-                                                   MOTION_LINE_RECOVERY_SWEEP_MAX_MDEG);
+                                                   -MOTION_LINE_RECOVERY_FULL_ROTATION_MDEG,
+                                                   MOTION_LINE_RECOVERY_FULL_ROTATION_MDEG);
     runtime->recovery_last_direction_mdeg = command;
     return command;
 }
@@ -126,12 +175,18 @@ static void set_sweep_search_intent(line_trace_policy_runtime_t *runtime,
                                     line_trace_phase_t phase)
 {
     intent->phase = phase;
-    intent->cmd.linear_mm_s = 0;
-    intent->cmd.angular_mdeg_s = next_sweep_recovery_turn(runtime);
-    intent->should_send_motion = true;
+    const int32_t turn_mdeg = next_sweep_recovery_turn(runtime);
+    if (runtime->recovery_stage == LINE_TRACE_RECOVERY_STAGE_FAILED) {
+        set_stop_to_idle_intent(intent, phase);
+        intent->lost_line = true;
+        return;
+    }
+    intent->plan.chassis_action = CONTROL_CHASSIS_ACTION_SEND_MOTION;
+    intent->plan.chassis_cmd.linear_mm_s = 0;
+    intent->plan.chassis_cmd.angular_mdeg_s = turn_mdeg;
     intent->lost_line = true;
     intent->pid_output_mdeg_s = 0.0f;
-    runtime->last_cmd = intent->cmd;
+    runtime->last_cmd = intent->plan.chassis_cmd;
     runtime->has_last_cmd = true;
 }
 
@@ -153,6 +208,7 @@ static void note_recovery_result_if_needed(line_trace_policy_runtime_t *runtime)
     }
 
     runtime->recovery_active = false;
+    runtime->recovery_stage = LINE_TRACE_RECOVERY_STAGE_NONE;
 }
 
 void motion_policy_plan(line_trace_policy_runtime_t *runtime,
@@ -166,15 +222,15 @@ void motion_policy_plan(line_trace_policy_runtime_t *runtime,
     }
 
     memset(intent, 0, sizeof(*intent));
-    intent->fault_reason = VEHICLE_FAULT_NONE;
+    intent->plan.fault_reason = VEHICLE_FAULT_NONE;
 
     if (input->run_mode == LINE_TRACE_RUN_MANUAL_TEST) {
         line_trace_policy_reset_pid(runtime);
         reset_fault_grace(runtime);
         intent->phase = LINE_TRACE_PHASE_MANUAL_TEST;
-        intent->cmd = input->manual_cmd;
-        intent->should_send_motion = true;
-        runtime->last_cmd = intent->cmd;
+        intent->plan.chassis_action = CONTROL_CHASSIS_ACTION_SEND_MOTION;
+        intent->plan.chassis_cmd = input->manual_cmd;
+        runtime->last_cmd = intent->plan.chassis_cmd;
         runtime->has_last_cmd = true;
         runtime->phase = intent->phase;
         publish_recovery_state(runtime, intent);
@@ -251,16 +307,16 @@ void motion_policy_plan(line_trace_policy_runtime_t *runtime,
                              (config->ki * runtime->integral) +
                              (config->kd * derivative);
     intent->phase = LINE_TRACE_PHASE_TRACK_LINE;
-    intent->cmd.linear_mm_s = motion_line_adaptive_speed_mm_s(config->base_speed_mm_s, input->sample.offset);
-    intent->cmd.angular_mdeg_s = motion_clamp_i32((int32_t)(-pid_output),
-                                                  -config->max_turn_mdeg_s,
-                                                  config->max_turn_mdeg_s);
-    intent->should_send_motion = true;
+    intent->plan.chassis_action = CONTROL_CHASSIS_ACTION_SEND_MOTION;
+    intent->plan.chassis_cmd.linear_mm_s = motion_line_adaptive_speed_mm_s(config->base_speed_mm_s, input->sample.offset);
+    intent->plan.chassis_cmd.angular_mdeg_s = motion_clamp_i32((int32_t)(-pid_output),
+                                                               -config->max_turn_mdeg_s,
+                                                               config->max_turn_mdeg_s);
     intent->pid_output_mdeg_s = pid_output;
-    runtime->last_cmd = intent->cmd;
+    runtime->last_cmd = intent->plan.chassis_cmd;
     runtime->has_last_cmd = true;
-    if (intent->cmd.angular_mdeg_s != 0) {
-        runtime->last_tracking_angular_mdeg_s = intent->cmd.angular_mdeg_s;
+    if (intent->plan.chassis_cmd.angular_mdeg_s != 0) {
+        runtime->last_tracking_angular_mdeg_s = intent->plan.chassis_cmd.angular_mdeg_s;
         runtime->has_last_tracking_angular = true;
     }
     runtime->phase = intent->phase;

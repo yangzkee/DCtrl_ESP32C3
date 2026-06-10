@@ -58,7 +58,7 @@ static void update_policy_telemetry(const line_trace_policy_output_t *output)
         return;
     }
 
-    telemetry_update_motion_cmd(&output->cmd);
+    telemetry_update_motion_cmd(&output->plan.chassis_cmd);
     telemetry_controller_state_t state = {
         .lost_line = output->lost_line,
         .line_quality = output->line_quality,
@@ -74,6 +74,9 @@ static void update_policy_telemetry(const line_trace_policy_output_t *output)
     strlcpy(state.recovery_relation,
             line_trace_recovery_relation_name(output->recovery_relation),
             sizeof(state.recovery_relation));
+    strlcpy(state.recovery_stage,
+            line_trace_recovery_stage_name(output->recovery_stage),
+            sizeof(state.recovery_stage));
     telemetry_update_controller_state(&state);
 }
 
@@ -84,14 +87,16 @@ static void apply_policy_output(const line_trace_policy_output_t *output)
     }
 
     update_policy_telemetry(output);
-    if (output->enter_fault) {
-        vehicle_state_enter_fault(output->fault_reason);
+    if (output->plan.vehicle_action == CONTROL_VEHICLE_ACTION_ENTER_FAULT) {
+        vehicle_state_enter_fault(output->plan.fault_reason);
+    } else if (output->plan.vehicle_action == CONTROL_VEHICLE_ACTION_STOP_TO_IDLE) {
+        vehicle_state_stop();
     }
 
     esp_err_t err = ESP_OK;
-    if (output->should_send_motion) {
-        err = chassis_uart_send_motion(&output->cmd);
-    } else if (output->should_stop) {
+    if (output->plan.chassis_action == CONTROL_CHASSIS_ACTION_SEND_MOTION) {
+        err = chassis_uart_send_motion(&output->plan.chassis_cmd);
+    } else if (output->plan.chassis_action == CONTROL_CHASSIS_ACTION_STOP) {
         err = chassis_uart_stop();
     }
 

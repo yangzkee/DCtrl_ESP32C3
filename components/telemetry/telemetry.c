@@ -90,6 +90,9 @@ esp_err_t telemetry_build_json(char *buffer, size_t buffer_size)
     char recovery_relation[sizeof(controller_state.recovery_relation)] = {0};
     strlcpy(recovery_relation, controller_state.recovery_relation, sizeof(recovery_relation));
     sanitize_json_string(recovery_relation);
+    char recovery_stage[sizeof(controller_state.recovery_stage)] = {0};
+    strlcpy(recovery_stage, controller_state.recovery_stage, sizeof(recovery_stage));
+    sanitize_json_string(recovery_stage);
 
     int written = snprintf(buffer,
                            buffer_size,
@@ -105,7 +108,7 @@ esp_err_t telemetry_build_json(char *buffer, size_t buffer_size)
                            "\"motion\":{\"linear_mm_s\":%ld,\"angular_mdeg_s\":%ld},"
                            "\"controller\":{\"line_phase\":\"%s\",\"lost_line\":%s,\"line_quality\":%u,"
                            "\"active_sensor_count\":%u,\"pid_output_mdeg_s\":%.2f,"
-                           "\"recovery\":{\"relation\":\"%s\",\"angle_mdeg\":%ld,"
+                           "\"recovery\":{\"relation\":\"%s\",\"stage\":\"%s\",\"angle_mdeg\":%ld,"
                            "\"target_mdeg\":%ld,\"direction_mdeg\":%ld}}}",
                            (unsigned long long)(esp_timer_get_time() / 1000ULL),
                            (unsigned long)param_store_version(),
@@ -135,6 +138,7 @@ esp_err_t telemetry_build_json(char *buffer, size_t buffer_size)
                            controller_state.active_sensor_count,
                            controller_state.pid_output_mdeg_s,
                            recovery_relation[0] == '\0' ? "NONE" : recovery_relation,
+                           recovery_stage[0] == '\0' ? "NONE" : recovery_stage,
                            (long)controller_state.recovery_angle_mdeg,
                            (long)controller_state.recovery_target_mdeg,
                            (long)controller_state.recovery_direction_mdeg);

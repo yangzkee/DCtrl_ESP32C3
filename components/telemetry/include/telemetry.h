@@ -19,6 +19,7 @@ typedef struct {
     float pid_output_mdeg_s;
     char line_phase[24];
     char recovery_relation[24];
+    char recovery_stage[24];
     int32_t recovery_angle_mdeg;
     int32_t recovery_target_mdeg;
     int32_t recovery_direction_mdeg;
