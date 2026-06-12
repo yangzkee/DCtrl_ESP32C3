@@ -1,7 +1,7 @@
 import CoreBluetooth
 import Foundation
 
-let defaultDeviceNamePrefix = "DCar-Liner"
+let defaultDeviceNamePrefix = "DCtrl"
 let serviceUUID = CBUUID(string: "7b3a0001-8d4d-4b9a-b5c7-0f7c4c415243")
 let rxUUID = CBUUID(string: "7b3a0002-8d4d-4b9a-b5c7-0f7c4c415243")
 let txUUID = CBUUID(string: "7b3a0003-8d4d-4b9a-b5c7-0f7c4c415243")
@@ -442,8 +442,8 @@ func parseArgs() -> Config {
               swift tools/ble_debug_tester.swift [options]
 
             Options:
-              --name NAME          Exact BLE device name. If omitted, scans by DCar-Liner prefix.
-              --name-prefix TEXT   BLE device name prefix, default DCar-Liner
+              --name NAME          Exact BLE device name. If omitted, scans by DCtrl prefix.
+              --name-prefix TEXT   BLE device name prefix, default DCtrl
               --command JSON       JSON debug command, default {"type":"get_telemetry"}
               --timeout SECONDS    Overall timeout, default 15
               --log-root PATH      Log root, default logs/ble-debug-tests

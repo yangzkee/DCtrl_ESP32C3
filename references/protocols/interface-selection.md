@@ -15,7 +15,7 @@ The current controller maps:
 
 - `linear_mm_s` to `Vx` in m/s.
 - `Vy` to `0`.
-- `angular_mdeg_s` to `Vz` in rad/s.
+- `angular_mdeg_s` to `Vz` as a per-command Z angle increment.
 
 ## Eight-Channel Line Sensor
 

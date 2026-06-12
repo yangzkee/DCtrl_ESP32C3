@@ -38,8 +38,8 @@ After reconnecting to the normal network, inspect the printed log folder or shar
 
 Default target:
 
-- BLE device name prefix: `DCar-Liner`.
-- Runtime BLE name: `DCar-Liner-XXXXXX`, where the suffix comes from the ESP32 Bluetooth MAC.
+- BLE device name prefix: `DCtrl`.
+- Runtime BLE name: `DCtrl`.
 - Service UUID: `7b3a0001-8d4d-4b9a-b5c7-0f7c4c415243`.
 - RX characteristic: `7b3a0002-8d4d-4b9a-b5c7-0f7c4c415243`.
 - TX characteristic: `7b3a0003-8d4d-4b9a-b5c7-0f7c4c415243`.

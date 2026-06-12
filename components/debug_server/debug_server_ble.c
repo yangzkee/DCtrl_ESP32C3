@@ -22,16 +22,20 @@
 #include "os/os_mbuf.h"
 #include "services/gap/ble_svc_gap.h"
 #include "services/gatt/ble_svc_gatt.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 
 static const char *TAG = "debug_server_ble";
 
-#define BLE_DEVICE_NAME_PREFIX "DCar-Liner"
+#define BLE_DEVICE_NAME_PREFIX "DCtrl"
 #define BLE_REQUEST_BYTES 1024
 #define BLE_RESPONSE_BYTES 4096
 #define BLE_DIRECT_RESPONSE_BYTES 180
 #define BLE_CHUNK_DATA_BYTES 160
 #define BLE_CHUNK_JSON_BYTES 512
 #define BLE_DEVICE_NAME_BYTES 21
+#define REMOTE_FRAME_BYTES 21
+#define REMOTE_WATCHDOG_MS 650
 #define BLE_NAME_NAMESPACE "dcar_ble"
 #define BLE_NAME_KEY "name"
 #define BLE_NAME_LEGACY_SUFFIX_KEY "suffix"
@@ -39,7 +43,9 @@ static const char *TAG = "debug_server_ble";
 static uint8_t s_addr_type;
 static uint16_t s_conn_handle = BLE_HS_CONN_HANDLE_NONE;
 static uint16_t s_tx_value_handle;
+static uint16_t s_remote_tx_value_handle;
 static bool s_notify_enabled;
+static bool s_remote_notify_enabled;
 static bool s_started;
 static char s_device_name[24] = BLE_DEVICE_NAME_PREFIX;
 static char s_default_device_name[24] = BLE_DEVICE_NAME_PREFIX;
@@ -51,6 +57,8 @@ static size_t s_rx_stream_len;
 static char s_last_request[BLE_REQUEST_BYTES];
 static char s_last_response[BLE_RESPONSE_BYTES] = "{\"type\":\"ble_ready\",\"status\":\"ok\"}";
 static char s_rx_stream[BLE_REQUEST_BYTES];
+static volatile bool s_remote_active;
+static volatile uint32_t s_remote_last_command_ms;
 
 static const ble_uuid128_t s_service_uuid =
     BLE_UUID128_INIT(0x43, 0x52, 0x41, 0x4c, 0x7c, 0x0f, 0xc7, 0xb5,
@@ -62,10 +70,21 @@ static const ble_uuid128_t s_tx_uuid =
     BLE_UUID128_INIT(0x43, 0x52, 0x41, 0x4c, 0x7c, 0x0f, 0xc7, 0xb5,
                      0x9a, 0x4b, 0x4d, 0x8d, 0x03, 0x00, 0x3a, 0x7b);
 
+static const ble_uuid128_t s_remote_service_uuid =
+    BLE_UUID128_INIT(0x01, 0x00, 0x43, 0x4d, 0x1f, 0x7b, 0x67, 0x9c,
+                     0x4e, 0x4f, 0x9b, 0x5b, 0x01, 0x00, 0x1f, 0x6d);
+static const ble_uuid128_t s_remote_rx_uuid =
+    BLE_UUID128_INIT(0x01, 0x00, 0x43, 0x4d, 0x1f, 0x7b, 0x67, 0x9c,
+                     0x4e, 0x4f, 0x9b, 0x5b, 0x02, 0x00, 0x1f, 0x6d);
+static const ble_uuid128_t s_remote_tx_uuid =
+    BLE_UUID128_INIT(0x01, 0x00, 0x43, 0x4d, 0x1f, 0x7b, 0x67, 0x9c,
+                     0x4e, 0x4f, 0x9b, 0x5b, 0x03, 0x00, 0x1f, 0x6d);
+
 static int ble_gap_event(struct ble_gap_event *event, void *arg);
 static int gatt_access_cb(uint16_t conn_handle, uint16_t attr_handle,
                           struct ble_gatt_access_ctxt *ctxt, void *arg);
 static int process_rx_json(const char *data, size_t len);
+static int write_remote_frame(struct ble_gatt_access_ctxt *ctxt);
 
 static const struct ble_gatt_svc_def s_gatt_svcs[] = {
     {
@@ -83,6 +102,25 @@ static const struct ble_gatt_svc_def s_gatt_svcs[] = {
                 .access_cb = gatt_access_cb,
                 .val_handle = &s_tx_value_handle,
                 .flags = BLE_GATT_CHR_F_READ | BLE_GATT_CHR_F_NOTIFY,
+            },
+            {0},
+        },
+    },
+    {
+        .type = BLE_GATT_SVC_TYPE_PRIMARY,
+        .uuid = &s_remote_service_uuid.u,
+        .characteristics = (struct ble_gatt_chr_def[])
+        {
+            {
+                .uuid = &s_remote_rx_uuid.u,
+                .access_cb = gatt_access_cb,
+                .flags = BLE_GATT_CHR_F_WRITE | BLE_GATT_CHR_F_WRITE_NO_RSP,
+            },
+            {
+                .uuid = &s_remote_tx_uuid.u,
+                .access_cb = gatt_access_cb,
+                .val_handle = &s_remote_tx_value_handle,
+                .flags = BLE_GATT_CHR_F_NOTIFY,
             },
             {0},
         },
@@ -299,20 +337,8 @@ static esp_err_t set_gap_device_name(void)
 
 static esp_err_t persist_device_name(const char *name)
 {
-    if (!s_name_nvs_open) {
-        return ESP_ERR_INVALID_STATE;
-    }
-
-    esp_err_t err = nvs_set_str(s_name_nvs, BLE_NAME_KEY, name);
-    if (err != ESP_OK) {
-        return err;
-    }
-    err = nvs_commit(s_name_nvs);
-    if (err != ESP_OK) {
-        return err;
-    }
-
-    snprintf(s_device_name, sizeof(s_device_name), "%s", name);
+    (void)name;
+    snprintf(s_device_name, sizeof(s_device_name), "%s", BLE_DEVICE_NAME_PREFIX);
     return set_gap_device_name();
 }
 
@@ -335,7 +361,7 @@ static esp_err_t reset_device_name(void)
         return err;
     }
 
-    snprintf(s_device_name, sizeof(s_device_name), "%s", s_default_device_name);
+    snprintf(s_device_name, sizeof(s_device_name), "%s", BLE_DEVICE_NAME_PREFIX);
     return set_gap_device_name();
 }
 
@@ -616,6 +642,127 @@ static int write_rx_request(struct ble_gatt_access_ctxt *ctxt)
     return process_rc;
 }
 
+static uint16_t remote_checksum16(const uint8_t *buffer, size_t len)
+{
+    uint16_t sum = 0;
+    for (size_t i = 0; i < len; ++i) {
+        sum = (uint16_t)(sum + buffer[i]);
+    }
+    return sum;
+}
+
+static bool remote_frame_is_zero_velocity(const uint8_t *frame)
+{
+    for (size_t i = 6; i < 6 + DFLINK_MOTION_VELOCITY_PAYLOAD_BYTES; ++i) {
+        if (frame[i] != 0) {
+            return false;
+        }
+    }
+    return true;
+}
+
+static bool remote_frame_is_valid_motion_velocity(const uint8_t *frame, size_t len)
+{
+    if (frame == NULL || len != REMOTE_FRAME_BYTES) {
+        return false;
+    }
+    if (frame[0] != DFLINK_FRAME_HEAD ||
+        frame[1] != DFLINK_TARGET_ID ||
+        frame[2] != DFLINK_SOURCE_ID ||
+        frame[3] != DFLINK_A_MOTION ||
+        frame[4] != DFLINK_B_MOTION_VELOCITY ||
+        frame[5] != DFLINK_MOTION_VELOCITY_PAYLOAD_BYTES ||
+        frame[18] != DFLINK_FRAME_TAIL) {
+        return false;
+    }
+
+    uint16_t expected = (uint16_t)frame[19] | ((uint16_t)frame[20] << 8);
+    return expected == remote_checksum16(frame, 19);
+}
+
+static void remote_notify_text(const char *text)
+{
+    if (!s_remote_notify_enabled || s_conn_handle == BLE_HS_CONN_HANDLE_NONE || text == NULL) {
+        return;
+    }
+    struct os_mbuf *om = ble_hs_mbuf_from_flat(text, strlen(text));
+    if (om == NULL) {
+        return;
+    }
+    int rc = ble_gatts_notify_custom(s_conn_handle, s_remote_tx_value_handle, om);
+    if (rc != 0) {
+        ESP_LOGW(TAG, "remote notify failed rc=%d", rc);
+    }
+}
+
+static bool remote_motion_allowed(bool is_zero)
+{
+    if (is_zero) {
+        return true;
+    }
+
+    vehicle_state_snapshot_t snapshot = {0};
+    vehicle_state_get_snapshot(&snapshot);
+    return snapshot.motion_state == VEHICLE_MOTION_SAFE_IDLE &&
+           snapshot.debug_session == VEHICLE_DEBUG_VIEW_ONLY;
+}
+
+static void remote_stop_if_active(const char *reason)
+{
+    if (!s_remote_active) {
+        return;
+    }
+    ESP_LOGW(TAG, "remote stop: %s", reason == NULL ? "unknown" : reason);
+    ESP_ERROR_CHECK_WITHOUT_ABORT(chassis_uart_stop());
+    s_remote_active = false;
+    s_remote_last_command_ms = 0;
+    remote_notify_text("STOP\n");
+}
+
+static int write_remote_frame(struct ble_gatt_access_ctxt *ctxt)
+{
+    int len = OS_MBUF_PKTLEN(ctxt->om);
+    if (len != REMOTE_FRAME_BYTES) {
+        remote_notify_text("E:LEN\n");
+        return BLE_ATT_ERR_INVALID_ATTR_VALUE_LEN;
+    }
+
+    uint8_t frame[REMOTE_FRAME_BYTES] = {0};
+    int rc = os_mbuf_copydata(ctxt->om, 0, len, frame);
+    if (rc != 0) {
+        remote_notify_text("E:COPY\n");
+        return BLE_ATT_ERR_UNLIKELY;
+    }
+    if (!remote_frame_is_valid_motion_velocity(frame, sizeof(frame))) {
+        remote_notify_text("E:FRAME\n");
+        return 0;
+    }
+
+    bool is_zero = remote_frame_is_zero_velocity(frame);
+    if (!remote_motion_allowed(is_zero)) {
+        ESP_LOGW(TAG, "remote non-zero motion rejected outside SAFE_IDLE");
+        remote_notify_text("E:BUSY\n");
+        return 0;
+    }
+
+    esp_err_t err = chassis_uart_write_raw_frame(frame, sizeof(frame));
+    if (err != ESP_OK) {
+        ESP_LOGW(TAG, "remote raw write failed: %s", esp_err_to_name(err));
+        remote_notify_text("E:UART\n");
+        return 0;
+    }
+
+    if (is_zero) {
+        s_remote_active = false;
+        s_remote_last_command_ms = 0;
+    } else {
+        s_remote_active = true;
+        s_remote_last_command_ms = vehicle_state_now_ms();
+    }
+    remote_notify_text("OK\n");
+    return 0;
+}
+
 static int gatt_access_cb(uint16_t conn_handle, uint16_t attr_handle,
                           struct ble_gatt_access_ctxt *ctxt, void *arg)
 {
@@ -630,6 +777,9 @@ static int gatt_access_cb(uint16_t conn_handle, uint16_t attr_handle,
     if (ble_uuid_cmp(uuid, &s_rx_uuid.u) == 0 && ctxt->op == BLE_GATT_ACCESS_OP_WRITE_CHR) {
         return write_rx_request(ctxt);
     }
+    if (ble_uuid_cmp(uuid, &s_remote_rx_uuid.u) == 0 && ctxt->op == BLE_GATT_ACCESS_OP_WRITE_CHR) {
+        return write_remote_frame(ctxt);
+    }
 
     return BLE_ATT_ERR_UNLIKELY;
 }
@@ -642,6 +792,9 @@ static void start_advertising(void)
     fields.name = (const uint8_t *)s_device_name;
     fields.name_len = strlen(s_device_name);
     fields.name_is_complete = 1;
+    fields.uuids128 = &s_remote_service_uuid;
+    fields.num_uuids128 = 1;
+    fields.uuids128_is_complete = 1;
     fields.tx_pwr_lvl_is_present = 1;
     fields.tx_pwr_lvl = BLE_HS_ADV_TX_PWR_LVL_AUTO;
 
@@ -664,7 +817,7 @@ static void start_advertising(void)
         return;
     }
 
-    ESP_LOGI(TAG, "BLE advertising name=%s service=7b3a0001-8d4d-4b9a-b5c7-0f7c4c415243", s_device_name);
+    ESP_LOGI(TAG, "BLE advertising name=%s remote=6d1f0001-5b9b-4f4e-9c67-7b1f4d430001 tuning=7b3a0001-8d4d-4b9a-b5c7-0f7c4c415243", s_device_name);
 }
 
 static int ble_gap_event(struct ble_gap_event *event, void *arg)
@@ -687,13 +840,17 @@ static int ble_gap_event(struct ble_gap_event *event, void *arg)
         vehicle_state_get_snapshot(&snapshot);
         if (snapshot.motion_state == VEHICLE_MOTION_AUTO_ARMED ||
             snapshot.motion_state == VEHICLE_MOTION_AUTO_RUNNING ||
-            snapshot.motion_state == VEHICLE_MOTION_MANUAL_TEST) {
+            snapshot.motion_state == VEHICLE_MOTION_MANUAL_TEST ||
+            s_remote_active) {
             ESP_LOGW(TAG, "BLE disconnected while vehicle active; stopping chassis");
             ESP_ERROR_CHECK_WITHOUT_ABORT(chassis_uart_stop());
             vehicle_state_stop();
         }
+        s_remote_active = false;
+        s_remote_last_command_ms = 0;
         s_conn_handle = BLE_HS_CONN_HANDLE_NONE;
         s_notify_enabled = false;
+        s_remote_notify_enabled = false;
         start_advertising();
         break;
     case BLE_GAP_EVENT_ADV_COMPLETE:
@@ -703,6 +860,9 @@ static int ble_gap_event(struct ble_gap_event *event, void *arg)
         if (event->subscribe.attr_handle == s_tx_value_handle) {
             s_notify_enabled = event->subscribe.cur_notify;
             ESP_LOGI(TAG, "BLE TX notify=%d", s_notify_enabled);
+        } else if (event->subscribe.attr_handle == s_remote_tx_value_handle) {
+            s_remote_notify_enabled = event->subscribe.cur_notify;
+            ESP_LOGI(TAG, "remote TX notify=%d", s_remote_notify_enabled);
         }
         break;
     case BLE_GAP_EVENT_MTU:
@@ -744,51 +904,34 @@ static int gatt_init(void)
 
 static void build_device_name(void)
 {
-    uint8_t mac[6] = {0};
-    esp_err_t err = esp_read_mac(mac, ESP_MAC_BT);
-    if (err != ESP_OK) {
-        ESP_LOGW(TAG, "read BT MAC failed err=%d, using prefix-only default BLE name", err);
-        snprintf(s_default_device_name, sizeof(s_default_device_name), "%s", BLE_DEVICE_NAME_PREFIX);
-    } else {
-        snprintf(s_default_device_name,
-                 sizeof(s_default_device_name),
-                 "%s-%02X%02X%02X",
-                 BLE_DEVICE_NAME_PREFIX,
-                 mac[3],
-                 mac[4],
-                 mac[5]);
-    }
+    snprintf(s_default_device_name, sizeof(s_default_device_name), "%s", BLE_DEVICE_NAME_PREFIX);
+    snprintf(s_device_name, sizeof(s_device_name), "%s", BLE_DEVICE_NAME_PREFIX);
 
-    snprintf(s_device_name, sizeof(s_device_name), "%s", s_default_device_name);
-
-    err = nvs_open(BLE_NAME_NAMESPACE, NVS_READWRITE, &s_name_nvs);
+    esp_err_t err = nvs_open(BLE_NAME_NAMESPACE, NVS_READWRITE, &s_name_nvs);
     if (err != ESP_OK) {
         ESP_LOGW(TAG, "open BLE name NVS failed err=%d, using default name", err);
         return;
     }
     s_name_nvs_open = true;
-
-    char saved_name[BLE_DEVICE_NAME_BYTES] = {0};
-    size_t saved_len = sizeof(saved_name);
-    err = nvs_get_str(s_name_nvs, BLE_NAME_KEY, saved_name, &saved_len);
-    if (err == ESP_OK && validate_device_name(saved_name, saved_name, sizeof(saved_name))) {
-        snprintf(s_device_name, sizeof(s_device_name), "%s", saved_name);
-        return;
+    esp_err_t erase_name_err = nvs_erase_key(s_name_nvs, BLE_NAME_KEY);
+    esp_err_t erase_suffix_err = nvs_erase_key(s_name_nvs, BLE_NAME_LEGACY_SUFFIX_KEY);
+    if ((erase_name_err == ESP_OK || erase_name_err == ESP_ERR_NVS_NOT_FOUND) &&
+        (erase_suffix_err == ESP_OK || erase_suffix_err == ESP_ERR_NVS_NOT_FOUND)) {
+        ESP_ERROR_CHECK_WITHOUT_ABORT(nvs_commit(s_name_nvs));
     }
-    if (err != ESP_ERR_NVS_NOT_FOUND) {
-        ESP_LOGW(TAG, "read BLE name failed err=%d, using default name", err);
-        return;
-    }
+}
 
-    char legacy_suffix[9] = {0};
-    size_t legacy_len = sizeof(legacy_suffix);
-    err = nvs_get_str(s_name_nvs, BLE_NAME_LEGACY_SUFFIX_KEY, legacy_suffix, &legacy_len);
-    if (err == ESP_OK) {
-        char migrated_name[BLE_DEVICE_NAME_BYTES] = {0};
-        snprintf(migrated_name, sizeof(migrated_name), "%s-%s", BLE_DEVICE_NAME_PREFIX, legacy_suffix);
-        if (validate_device_name(migrated_name, migrated_name, sizeof(migrated_name))) {
-            snprintf(s_device_name, sizeof(s_device_name), "%s", migrated_name);
+static void remote_watchdog_task(void *param)
+{
+    (void)param;
+    while (true) {
+        if (s_remote_active && s_remote_last_command_ms != 0) {
+            uint32_t now_ms = vehicle_state_now_ms();
+            if ((int32_t)(now_ms - s_remote_last_command_ms) > REMOTE_WATCHDOG_MS) {
+                remote_stop_if_active("watchdog");
+            }
         }
+        vTaskDelay(pdMS_TO_TICKS(100));
     }
 }
 
@@ -830,6 +973,11 @@ esp_err_t debug_server_ble_start(void)
     }
 
     nimble_port_freertos_init(host_task);
+    BaseType_t task_ok = xTaskCreate(remote_watchdog_task, "dctrl_remote_wd", 3072, NULL, 5, NULL);
+    if (task_ok != pdPASS) {
+        ESP_LOGE(TAG, "create remote watchdog failed");
+        return ESP_ERR_NO_MEM;
+    }
     s_started = true;
     ESP_LOGI(TAG, "BLE debug transport started");
     return ESP_OK;

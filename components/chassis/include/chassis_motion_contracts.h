@@ -17,7 +17,7 @@ extern "C" {
 
 typedef struct {
     int32_t linear_mm_s;
-    // DFLink Motion_Velocity Vz is rad/s.
+    // DFLink Motion_Velocity Vz is a per-command Z angle increment.
     int32_t angular_mdeg_s;
 } chassis_motion_cmd_t;
 

@@ -230,8 +230,8 @@ The HTTP debug server follows the stability pattern from ESP-IDF examples and ma
 BLE debug transport:
 
 - Stack: NimBLE BLE GATT, not Classic Bluetooth SPP. This keeps the firmware compatible with ESP32-C3, which supports BLE but not Classic Bluetooth.
-- Device name prefix: `DCar-Liner`.
-- Default runtime device name: `DCar-Liner-XXXXXX`, where the suffix comes from the ESP32 Bluetooth MAC. The full BLE name can be changed over BLE.
+- Device name prefix: `DCtrl`.
+- Default runtime device name: `DCtrl`. BLE rename commands are accepted only as compatibility no-ops.
 - Service UUID: `7b3a0001-8d4d-4b9a-b5c7-0f7c4c415243`.
 - RX characteristic UUID: `7b3a0002-8d4d-4b9a-b5c7-0f7c4c415243`, write compact frames or JSON requests here.
 - TX characteristic UUID: `7b3a0003-8d4d-4b9a-b5c7-0f7c4c415243`, read compact frames or JSON responses here.
@@ -297,7 +297,7 @@ Computer-side BLE validation:
 swift tools/ble_debug_tester.swift --timeout 25
 ```
 
-The tester uses macOS CoreBluetooth directly. By default it scans for names starting with `DCar-Liner`, connects, writes the selected command, follows chunked TX responses, accepts JSON or compact BLE responses, and writes logs to `logs/ble-debug-tests/<timestamp>/`. Use `--name` only when you need to target one exact BLE name.
+The tester uses macOS CoreBluetooth directly. By default it scans for names starting with `DCtrl`, connects, writes the selected command, follows chunked TX responses, accepts JSON or compact BLE responses, and writes logs to `logs/ble-debug-tests/<timestamp>/`. Use `--name` only when you need to target one exact BLE name.
 
 Compact frame examples:
 
@@ -457,7 +457,7 @@ The chassis driver sends DFLink `Motion_Velocity` for continuous line-following 
   This ratio is used to interpret measured chassis speed later, not to scale the
   value before sending it to the chassis.
 - `Vy` is fixed at `0`.
-- `angular_mdeg_s` is now treated as a per-command Z angle increment in millidegrees and maps to DFLink `Vz` in radians per command. The chassis must receive commands continuously to keep moving.
+- `angular_mdeg_s` is now treated as a per-command Z angle increment in millidegrees and maps to DFLink `Vz` as radians per command. The chassis must receive commands continuously to keep moving.
 
 The official firmware also includes probe-style chassis diagnostics, so the
 temporary standalone probe firmware is no longer part of the maintained path.
@@ -472,7 +472,7 @@ diagnostic commands are:
 - `Crepeat`: send ready, version, and params queries in sequence.
 - `Codom`: request odometry at 10 Hz and listen briefly for response frames.
 - `Cxyz`: send one low-speed `Motion_Velocity` test frame with `Vx=0.05 m/s`,
-  `Vy=0`, and `Vz=0.10 rad/s`; this mainly verifies the XYZ speed command path
+  `Vy=0`, and `Vz=0.10 rad/cmd`; this mainly verifies the XYZ speed command path
   and may not produce a response.
 - `Cxyzrx`: send the same low-speed XYZ frame, then listen briefly for chassis
   return bytes on the official RX pin.

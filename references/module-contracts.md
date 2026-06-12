@@ -69,7 +69,7 @@
 
 - Goal: Keep BLE available for low-power tuning, and expose Wi-Fi SoftAP plus HTTP/WebSocket only as an on-demand fallback.
 - Inputs: `debug_server_config_t`, compact BLE frames, debug protocol requests, and optional browser/WebSocket clients.
-- Outputs: BLE device name defaults to `DCar-Liner-XXXXXX` and may be changed to a complete custom name; after `W1`, SoftAP `DCar-Liner-XXXXXX`, HTTP API at `192.168.4.1`, WebSocket endpoint at `/ws`, and OTA endpoints at `/api/ota/status` and `/api/ota`.
+- Outputs: BLE device name defaults to fixed `DCtrl`; after `W1`, SoftAP `DCar-Liner-XXXXXX`, HTTP API at `192.168.4.1`, WebSocket endpoint at `/ws`, and OTA endpoints at `/api/ota/status` and `/api/ota`.
 - Independent Test: Use `tools/ble_debug_tester.swift --command G --append-newline --expect-prefix P`; then send `W1` and call `/api/schema`, `/api/params`, `/api/telemetry`, and `/api/ota/status`.
 - Name Control: `N` reads the BLE name, `N=<name>` saves a complete 1-20 UTF-8 byte name using CJK Chinese/ASCII letters/digits/`-`/`_`, and `N=*` restores the default Bluetooth-MAC name.
 - Failure Rules: Compact parameter writes return `E:RANGE`, `E:FAULT`, `E:BUSY`, or `E:SAVE`; Wi-Fi startup failures do not disable BLE.

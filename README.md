@@ -40,7 +40,7 @@ For the eight-channel line sensor, USART digital mode is the first implementatio
 
 ## Wireless Debug Scaffold
 
-The firmware starts a Wi-Fi SoftAP named `DCar-Liner-XXXXXX` with password `DCar-Liner123`.
+The firmware advertises BLE as `DCtrl`. The optional Wi-Fi fallback still starts a SoftAP named `DCar-Liner-XXXXXX` with password `DCar-Liner123`.
 
 After connecting the computer to that hotspot:
 
