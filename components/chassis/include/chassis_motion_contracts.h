@@ -16,9 +16,10 @@ extern "C" {
 #define DFLINK_MOTION_VELOCITY_PAYLOAD_BYTES 12
 
 typedef struct {
-    int32_t linear_mm_s;
+    int32_t vx_mm_s;
+    int32_t vy_mm_s;
     // DFLink Motion_Velocity Vz is a per-command Z angle increment.
-    int32_t angular_mdeg_s;
+    int32_t yaw_mdeg;
 } chassis_motion_cmd_t;
 
 #ifdef __cplusplus

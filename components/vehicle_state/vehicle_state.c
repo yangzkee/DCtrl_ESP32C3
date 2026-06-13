@@ -183,7 +183,7 @@ esp_err_t vehicle_state_start_manual_test(const chassis_motion_cmd_t *cmd, uint3
     }
 
     s_state.manual_cmd = *cmd;
-    if (cmd->linear_mm_s == 0 && cmd->angular_mdeg_s == 0) {
+    if (cmd->vx_mm_s == 0 && cmd->vy_mm_s == 0 && cmd->yaw_mdeg == 0) {
         s_state.manual_deadline_ms = 0;
         set_state_locked(VEHICLE_MOTION_PARAM_TUNING, VEHICLE_DEBUG_TUNING_ACTIVE, VEHICLE_FAULT_NONE);
     } else {

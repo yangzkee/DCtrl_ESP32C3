@@ -45,9 +45,9 @@ static void write_dflink_f32(uint8_t *buffer, float value)
     write_i32_le(buffer, dflink_f32_fixed(value));
 }
 
-static float linear_cmd_to_protocol_vx(int32_t linear_mm_s)
+static float motion_axis_cmd_to_protocol(int32_t mm_s)
 {
-    return (float)linear_mm_s / 1000.0f;
+    return (float)mm_s / 1000.0f;
 }
 
 static float angle_increment_cmd_to_protocol_vz(int32_t angular_mdeg)
@@ -168,6 +168,14 @@ static esp_err_t send_motion_velocity_locked(float vx_m_s, float vy_m_s, float v
         *tx_bytes += (uint32_t)frame_len;
     }
     return err;
+}
+
+static esp_err_t send_motion_command_locked(const chassis_motion_cmd_t *cmd, uint32_t *tx_bytes)
+{
+    const float vx_m_s = motion_axis_cmd_to_protocol(cmd->vx_mm_s);
+    const float vy_m_s = motion_axis_cmd_to_protocol(cmd->vy_mm_s);
+    const float vz_rad_per_cmd = angle_increment_cmd_to_protocol_vz(cmd->yaw_mdeg);
+    return send_motion_velocity_locked(vx_m_s, vy_m_s, vz_rad_per_cmd, tx_bytes);
 }
 
 static void bytes_to_hex(const uint8_t *bytes, size_t len, char *out, size_t out_size)
@@ -354,21 +362,7 @@ esp_err_t chassis_uart_send_motion(const chassis_motion_cmd_t *cmd)
     ESP_RETURN_ON_FALSE(s_ready && cmd != NULL, ESP_ERR_INVALID_STATE, TAG, "chassis uart not ready");
     ESP_RETURN_ON_ERROR(take_uart_mutex(pdMS_TO_TICKS(100)), TAG, "take uart mutex");
 
-    const float vx_m_s = linear_cmd_to_protocol_vx(cmd->linear_mm_s);
-    const float vy_m_s = 0.0f;
-    const float vz_rad_per_cmd = angle_increment_cmd_to_protocol_vz(cmd->angular_mdeg_s);
-
-    esp_err_t err = send_motion_velocity_locked(vx_m_s, vy_m_s, vz_rad_per_cmd, NULL);
-    give_uart_mutex();
-    return err;
-}
-
-esp_err_t chassis_uart_write_raw_frame(const uint8_t *frame, size_t frame_len)
-{
-    ESP_RETURN_ON_FALSE(s_ready && frame != NULL && frame_len > 0, ESP_ERR_INVALID_STATE, TAG, "chassis uart not ready");
-    ESP_RETURN_ON_FALSE(frame_len <= DFLINK_MAX_FRAME_BYTES, ESP_ERR_INVALID_SIZE, TAG, "raw frame too large");
-    ESP_RETURN_ON_ERROR(take_uart_mutex(pdMS_TO_TICKS(100)), TAG, "take raw uart mutex");
-    esp_err_t err = write_bytes_locked(frame, frame_len);
+    esp_err_t err = send_motion_command_locked(cmd, NULL);
     give_uart_mutex();
     return err;
 }
@@ -376,8 +370,9 @@ esp_err_t chassis_uart_write_raw_frame(const uint8_t *frame, size_t frame_len)
 esp_err_t chassis_uart_stop(void)
 {
     const chassis_motion_cmd_t stop_cmd = {
-        .linear_mm_s = 0,
-        .angular_mdeg_s = 0,
+        .vx_mm_s = 0,
+        .vy_mm_s = 0,
+        .yaw_mdeg = 0,
     };
     return chassis_uart_send_motion(&stop_cmd);
 }
@@ -413,13 +408,15 @@ esp_err_t chassis_uart_diag_command(const char *command, chassis_diag_result_t *
         const bool is_zero = strcmp(selected, "xyz0") == 0;
         const bool is_scaled_500 = strcmp(selected, "xyz500") == 0 || strcmp(selected, "xyz500rx") == 0;
         const bool wait_for_rx = strcmp(selected, "xyzrx") == 0 || strcmp(selected, "xyz500rx") == 0;
-        const float vx_m_s = is_zero ? 0.0f : (is_scaled_500 ? linear_cmd_to_protocol_vx(500) : 0.05f);
-        const float vy_m_s = 0.0f;
-        const float vz_rad_per_cmd = (is_zero || is_scaled_500) ? 0.0f : 0.10f;
+        const chassis_motion_cmd_t cmd = {
+            .vx_mm_s = is_zero ? 0 : (is_scaled_500 ? 500 : 50),
+            .vy_mm_s = 0,
+            .yaw_mdeg = (is_zero || is_scaled_500) ? 0 : 5729,
+        };
         if (wait_for_rx) {
             ESP_ERROR_CHECK_WITHOUT_ABORT(uart_flush_input(s_config.port));
         }
-        esp_err_t xyz_err = send_motion_velocity_locked(vx_m_s, vy_m_s, vz_rad_per_cmd, &result->tx_bytes);
+        esp_err_t xyz_err = send_motion_command_locked(&cmd, &result->tx_bytes);
         if (xyz_err == ESP_OK && wait_for_rx) {
             read_diag_responses_locked(result, 800);
         }

@@ -105,7 +105,8 @@ esp_err_t telemetry_build_json(char *buffer, size_t buffer_size)
                            "\"line_uart\":{\"ready\":%s,\"requests\":%lu,\"frames\":%lu,"
                            "\"digital_frames\":%lu,\"invalid_frames\":%lu,\"timeouts\":%lu,"
                            "\"last_error\":%d,\"last_frame\":\"%s\"},"
-                           "\"motion\":{\"linear_mm_s\":%ld,\"angular_mdeg_s\":%ld},"
+                           "\"motion\":{\"vx_mm_s\":%ld,\"vy_mm_s\":%ld,\"yaw_mdeg\":%ld,"
+                           "\"linear_mm_s\":%ld,\"angular_mdeg_s\":%ld},"
                            "\"controller\":{\"line_phase\":\"%s\",\"lost_line\":%s,\"line_quality\":%u,"
                            "\"active_sensor_count\":%u,\"pid_output_mdeg_s\":%.2f,"
                            "\"recovery\":{\"relation\":\"%s\",\"stage\":\"%s\",\"angle_mdeg\":%ld,"
@@ -131,8 +132,11 @@ esp_err_t telemetry_build_json(char *buffer, size_t buffer_size)
                            (unsigned long)line_status.timeout_count,
                            line_status.last_error,
                            last_frame,
-                           (long)motion_cmd.linear_mm_s,
-                           (long)motion_cmd.angular_mdeg_s,
+                           (long)motion_cmd.vx_mm_s,
+                           (long)motion_cmd.vy_mm_s,
+                           (long)motion_cmd.yaw_mdeg,
+                           (long)motion_cmd.vx_mm_s,
+                           (long)motion_cmd.yaw_mdeg,
                            line_phase[0] == '\0' ? "UNKNOWN" : line_phase,
                            controller_state.lost_line ? "true" : "false",
                            controller_state.line_quality,

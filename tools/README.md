@@ -63,3 +63,16 @@ swift tools/ble_debug_tester.swift --timeout 25 --command S9000,0,0,2 --append-n
 ```
 
 The compact `G` response is `P<kp>,<ki>,<kd>,<gear>`. The compact `S` command writes and saves the four values; invalid ranges return `E:RANGE`.
+
+## BLE Remote Tester
+
+`ble_remote_tester.swift` targets the independent DCtrl remote service and sends the 13-byte remote v1 motion frame used by the WeChat joystick.
+
+```sh
+swift tools/ble_remote_tester.swift --timeout 25 --motion zero
+swift tools/ble_remote_tester.swift --timeout 25 --motion forward
+swift tools/ble_remote_tester.swift --timeout 25 --motion strafe
+swift tools/ble_remote_tester.swift --timeout 25 --motion yaw
+```
+
+The tester passes only when the remote TX notify returns `OK`; `E:BUSY`, `E:UART`, `E:FRAME`, or timeout fails the run.

@@ -292,31 +292,40 @@ static esp_err_t handle_manual_motion(cJSON *root, char *response_json, size_t r
     const cJSON *motion = cJSON_GetObjectItemCaseSensitive(root, "motion");
     if (cJSON_IsString(motion)) {
         if (strcmp(motion->valuestring, "forward") == 0) {
-            cmd.linear_mm_s = default_linear;
+            cmd.vx_mm_s = default_linear;
         } else if (strcmp(motion->valuestring, "backward") == 0) {
-            cmd.linear_mm_s = -default_linear;
+            cmd.vx_mm_s = -default_linear;
         } else if (strcmp(motion->valuestring, "left") == 0) {
-            cmd.angular_mdeg_s = default_angular;
+            cmd.yaw_mdeg = default_angular;
         } else if (strcmp(motion->valuestring, "right") == 0) {
-            cmd.angular_mdeg_s = -default_angular;
+            cmd.yaw_mdeg = -default_angular;
         } else if (strcmp(motion->valuestring, "stop") == 0) {
-            cmd.linear_mm_s = 0;
-            cmd.angular_mdeg_s = 0;
+            cmd.vx_mm_s = 0;
+            cmd.vy_mm_s = 0;
+            cmd.yaw_mdeg = 0;
         } else {
             return write_error_response(response_json, response_size, "unknown manual motion");
         }
     } else {
+        const cJSON *vx = cJSON_GetObjectItemCaseSensitive(root, "vx_mm_s");
+        const cJSON *vy = cJSON_GetObjectItemCaseSensitive(root, "vy_mm_s");
+        const cJSON *yaw = cJSON_GetObjectItemCaseSensitive(root, "yaw_mdeg");
         const cJSON *linear = cJSON_GetObjectItemCaseSensitive(root, "linear_mm_s");
         const cJSON *angular = cJSON_GetObjectItemCaseSensitive(root, "angular_mdeg_s");
-        if (!cJSON_IsNumber(linear) && !cJSON_IsNumber(angular)) {
+        if (!cJSON_IsNumber(vx) && !cJSON_IsNumber(vy) && !cJSON_IsNumber(yaw) &&
+            !cJSON_IsNumber(linear) && !cJSON_IsNumber(angular)) {
             return write_error_response(response_json, response_size, "missing manual motion");
         }
-        cmd.linear_mm_s = cJSON_IsNumber(linear) ? (int32_t)linear->valuedouble : 0;
-        cmd.angular_mdeg_s = cJSON_IsNumber(angular) ? (int32_t)angular->valuedouble : 0;
+        cmd.vx_mm_s = cJSON_IsNumber(vx) ? (int32_t)vx->valuedouble :
+            (cJSON_IsNumber(linear) ? (int32_t)linear->valuedouble : 0);
+        cmd.vy_mm_s = cJSON_IsNumber(vy) ? (int32_t)vy->valuedouble : 0;
+        cmd.yaw_mdeg = cJSON_IsNumber(yaw) ? (int32_t)yaw->valuedouble :
+            (cJSON_IsNumber(angular) ? (int32_t)angular->valuedouble : 0);
     }
 
-    if (cmd.linear_mm_s < -max_linear || cmd.linear_mm_s > max_linear ||
-        cmd.angular_mdeg_s < -max_angular || cmd.angular_mdeg_s > max_angular) {
+    if (cmd.vx_mm_s < -max_linear || cmd.vx_mm_s > max_linear ||
+        cmd.vy_mm_s < -max_linear || cmd.vy_mm_s > max_linear ||
+        cmd.yaw_mdeg < -max_angular || cmd.yaw_mdeg > max_angular) {
         return write_error_response(response_json, response_size, "manual motion exceeds safe limit");
     }
 
