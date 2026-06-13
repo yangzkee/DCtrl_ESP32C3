@@ -41,6 +41,7 @@ static const char *TAG = "debug_server_ble";
 #define REMOTE_V1_VERSION 0x01
 #define REMOTE_V1_TYPE_MOTION 0x01
 #define REMOTE_LEGACY_FRAME_BYTES 21
+#define REMOTE_FEED_PERIOD_MS 20
 #define REMOTE_WATCHDOG_MS 650
 #define REMOTE_PI 3.14159265358979323846f
 #define BLE_NAME_NAMESPACE "dcar_ble"
@@ -64,8 +65,10 @@ static size_t s_rx_stream_len;
 static char s_last_request[BLE_REQUEST_BYTES];
 static char s_last_response[BLE_RESPONSE_BYTES] = "{\"type\":\"ble_ready\",\"status\":\"ok\"}";
 static char s_rx_stream[BLE_REQUEST_BYTES];
+static portMUX_TYPE s_remote_lock = portMUX_INITIALIZER_UNLOCKED;
 static volatile bool s_remote_active;
 static volatile uint32_t s_remote_last_command_ms;
+static chassis_motion_cmd_t s_remote_target_cmd;
 static uint8_t s_remote_legacy_frame[REMOTE_LEGACY_FRAME_BYTES];
 static size_t s_remote_legacy_len;
 
@@ -789,18 +792,72 @@ static bool remote_motion_allowed(bool is_zero)
            snapshot.debug_session == VEHICLE_DEBUG_VIEW_ONLY;
 }
 
-static void remote_stop_if_active(const char *reason)
+static void remote_target_set(const chassis_motion_cmd_t *cmd, uint32_t command_ms)
 {
-    if (!s_remote_active) {
-        return;
+    taskENTER_CRITICAL(&s_remote_lock);
+    s_remote_target_cmd = *cmd;
+    s_remote_active = true;
+    s_remote_last_command_ms = command_ms;
+    taskEXIT_CRITICAL(&s_remote_lock);
+}
+
+static void remote_target_clear(void)
+{
+    taskENTER_CRITICAL(&s_remote_lock);
+    s_remote_target_cmd = (chassis_motion_cmd_t){0};
+    s_remote_active = false;
+    s_remote_last_command_ms = 0;
+    taskEXIT_CRITICAL(&s_remote_lock);
+}
+
+static bool remote_target_is_active(void)
+{
+    bool active = false;
+    taskENTER_CRITICAL(&s_remote_lock);
+    active = s_remote_active;
+    taskEXIT_CRITICAL(&s_remote_lock);
+    return active;
+}
+
+static bool remote_target_snapshot(chassis_motion_cmd_t *cmd, uint32_t *last_command_ms)
+{
+    bool active = false;
+    taskENTER_CRITICAL(&s_remote_lock);
+    active = s_remote_active;
+    if (active && cmd != NULL) {
+        *cmd = s_remote_target_cmd;
     }
+    if (last_command_ms != NULL) {
+        *last_command_ms = s_remote_last_command_ms;
+    }
+    taskEXIT_CRITICAL(&s_remote_lock);
+    return active;
+}
+
+static bool remote_target_expire_if_needed(uint32_t now_ms)
+{
+    bool expired = false;
+    taskENTER_CRITICAL(&s_remote_lock);
+    if (s_remote_active && s_remote_last_command_ms != 0 &&
+        (int32_t)(now_ms - s_remote_last_command_ms) > REMOTE_WATCHDOG_MS) {
+        s_remote_target_cmd = (chassis_motion_cmd_t){0};
+        s_remote_active = false;
+        s_remote_last_command_ms = 0;
+        expired = true;
+    }
+    taskEXIT_CRITICAL(&s_remote_lock);
+    return expired;
+}
+
+static void remote_send_stop(const char *reason, const char *notify_text)
+{
     ESP_LOGW(TAG, "remote stop: %s", reason == NULL ? "unknown" : reason);
     ESP_ERROR_CHECK_WITHOUT_ABORT(chassis_uart_stop());
     const chassis_motion_cmd_t stop_cmd = {0};
     telemetry_update_motion_cmd(&stop_cmd);
-    s_remote_active = false;
-    s_remote_last_command_ms = 0;
-    remote_notify_text("STOP\n");
+    if (notify_text != NULL) {
+        remote_notify_text(notify_text);
+    }
 }
 
 static int remote_execute_motion(const chassis_motion_cmd_t *cmd)
@@ -812,22 +869,22 @@ static int remote_execute_motion(const chassis_motion_cmd_t *cmd)
         return 0;
     }
 
-    esp_err_t err = chassis_uart_send_motion(cmd);
-    if (err != ESP_OK) {
-        ESP_LOGW(TAG, "remote motion write failed: %s", esp_err_to_name(err));
-        remote_notify_text("E:UART\n");
+    if (is_zero) {
+        remote_target_clear();
+        esp_err_t err = chassis_uart_stop();
+        if (err != ESP_OK) {
+            ESP_LOGW(TAG, "remote zero write failed: %s", esp_err_to_name(err));
+            remote_notify_text("E:UART\n");
+            return 0;
+        }
+        telemetry_update_motion_cmd(cmd);
+        remote_notify_text("OK\n");
         return 0;
     }
-    telemetry_update_motion_cmd(cmd);
 
-    if (is_zero) {
-        s_remote_active = false;
-        s_remote_last_command_ms = 0;
-    } else {
-        s_remote_active = true;
-        s_remote_last_command_ms = vehicle_state_now_ms();
-    }
-    ESP_LOGI(TAG, "remote motion vx=%ld vy=%ld yaw=%ld",
+    remote_target_set(cmd, vehicle_state_now_ms());
+    telemetry_update_motion_cmd(cmd);
+    ESP_LOGD(TAG, "remote target vx=%ld vy=%ld yaw=%ld",
              (long)cmd->vx_mm_s,
              (long)cmd->vy_mm_s,
              (long)cmd->yaw_mdeg);
@@ -987,18 +1044,18 @@ static int ble_gap_event(struct ble_gap_event *event, void *arg)
         ESP_LOGI(TAG, "BLE disconnected reason=%d", event->disconnect.reason);
         vehicle_state_snapshot_t snapshot = {0};
         vehicle_state_get_snapshot(&snapshot);
+        const bool remote_was_active = remote_target_is_active();
         if (snapshot.motion_state == VEHICLE_MOTION_AUTO_ARMED ||
             snapshot.motion_state == VEHICLE_MOTION_AUTO_RUNNING ||
             snapshot.motion_state == VEHICLE_MOTION_MANUAL_TEST ||
-            s_remote_active) {
+            remote_was_active) {
             ESP_LOGW(TAG, "BLE disconnected while vehicle active; stopping chassis");
             ESP_ERROR_CHECK_WITHOUT_ABORT(chassis_uart_stop());
             const chassis_motion_cmd_t stop_cmd = {0};
             telemetry_update_motion_cmd(&stop_cmd);
             vehicle_state_stop();
         }
-        s_remote_active = false;
-        s_remote_last_command_ms = 0;
+        remote_target_clear();
         s_conn_handle = BLE_HS_CONN_HANDLE_NONE;
         s_notify_enabled = false;
         s_remote_notify_enabled = false;
@@ -1072,17 +1129,27 @@ static void build_device_name(void)
     }
 }
 
-static void remote_watchdog_task(void *param)
+static void remote_control_task(void *param)
 {
     (void)param;
     while (true) {
-        if (s_remote_active && s_remote_last_command_ms != 0) {
-            uint32_t now_ms = vehicle_state_now_ms();
-            if ((int32_t)(now_ms - s_remote_last_command_ms) > REMOTE_WATCHDOG_MS) {
-                remote_stop_if_active("watchdog");
+        uint32_t now_ms = vehicle_state_now_ms();
+        if (remote_target_expire_if_needed(now_ms)) {
+            remote_send_stop("watchdog", "STOP\n");
+        } else {
+            chassis_motion_cmd_t cmd = {0};
+            if (remote_target_snapshot(&cmd, NULL)) {
+                esp_err_t err = chassis_uart_send_motion(&cmd);
+                if (err != ESP_OK) {
+                    ESP_LOGW(TAG, "remote feed write failed: %s", esp_err_to_name(err));
+                    remote_target_clear();
+                    const chassis_motion_cmd_t stop_cmd = {0};
+                    telemetry_update_motion_cmd(&stop_cmd);
+                    remote_notify_text("E:UART\n");
+                }
             }
         }
-        vTaskDelay(pdMS_TO_TICKS(100));
+        vTaskDelay(pdMS_TO_TICKS(REMOTE_FEED_PERIOD_MS));
     }
 }
 
@@ -1124,9 +1191,9 @@ esp_err_t debug_server_ble_start(void)
     }
 
     nimble_port_freertos_init(host_task);
-    BaseType_t task_ok = xTaskCreate(remote_watchdog_task, "dctrl_remote_wd", 3072, NULL, 5, NULL);
+    BaseType_t task_ok = xTaskCreate(remote_control_task, "dctrl_remote_ctl", 3072, NULL, 5, NULL);
     if (task_ok != pdPASS) {
-        ESP_LOGE(TAG, "create remote watchdog failed");
+        ESP_LOGE(TAG, "create remote control task failed");
         return ESP_ERR_NO_MEM;
     }
     s_started = true;
