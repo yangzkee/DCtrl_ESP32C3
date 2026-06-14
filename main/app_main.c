@@ -4,7 +4,6 @@
 #include "chassis_uart.h"
 #include "debug_server.h"
 #include "line_sensor_uart.h"
-#include "line_trace_controller.h"
 #include "nvs_flash.h"
 #include "param_store.h"
 #include "vehicle_state.h"
@@ -44,6 +43,5 @@ void app_main(void)
     ESP_ERROR_CHECK(chassis_uart_init(&profile->chassis_uart));
     ESP_ERROR_CHECK(line_sensor_uart_init(&profile->line_sensor_uart));
     ESP_ERROR_CHECK(debug_server_start(NULL));
-    ESP_ERROR_CHECK(line_trace_controller_start(profile));
     vehicle_state_finish_boot();
 }

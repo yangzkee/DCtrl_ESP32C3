@@ -1,0 +1,509 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ESP32-C3 循线项目硬件框架搭建清单</title>
+  <style>
+    :root {
+      --bg: #f5f7fb;
+      --panel: #ffffff;
+      --ink: #17202a;
+      --muted: #64748b;
+      --line: #d8e0ea;
+      --soft: #eef4f8;
+      --teal: #0f766e;
+      --blue: #2563eb;
+      --amber: #b7791f;
+      --green: #15803d;
+      --red: #b42318;
+      --shadow: 0 18px 44px rgba(23, 32, 42, 0.08);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      color: var(--ink);
+      background:
+        linear-gradient(180deg, rgba(15, 118, 110, 0.08), rgba(37, 99, 235, 0.04) 320px, transparent 620px),
+        var(--bg);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans SC", "Microsoft YaHei", sans-serif;
+      line-height: 1.65;
+    }
+
+    a {
+      color: var(--teal);
+      text-decoration: none;
+    }
+
+    .shell {
+      width: min(1120px, calc(100vw - 32px));
+      margin: 0 auto;
+      padding: 28px 0 48px;
+    }
+
+    .topbar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 16px;
+      margin-bottom: 24px;
+    }
+
+    .back-link {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 10px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: rgba(255, 255, 255, 0.72);
+      font-weight: 700;
+      font-size: 14px;
+    }
+
+    .badge {
+      color: var(--teal);
+      border: 1px solid rgba(15, 118, 110, 0.22);
+      background: rgba(15, 118, 110, 0.08);
+      border-radius: 999px;
+      padding: 6px 10px;
+      font-size: 13px;
+      font-weight: 760;
+    }
+
+    .hero {
+      display: grid;
+      grid-template-columns: minmax(0, 1.08fr) minmax(280px, 0.92fr);
+      gap: 24px;
+      align-items: stretch;
+      margin-bottom: 24px;
+    }
+
+    .hero-copy,
+    .role-map,
+    .check-card,
+    .ready-card,
+    .boundary-card {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      box-shadow: var(--shadow);
+    }
+
+    .hero-copy {
+      padding: clamp(22px, 4vw, 36px);
+    }
+
+    .eyebrow {
+      color: var(--teal);
+      font-weight: 800;
+      font-size: 14px;
+      letter-spacing: 0;
+      margin: 0 0 10px;
+    }
+
+    h1,
+    h2,
+    h3,
+    p {
+      margin: 0;
+    }
+
+    h1 {
+      max-width: 720px;
+      font-size: clamp(28px, 5vw, 48px);
+      line-height: 1.12;
+      letter-spacing: 0;
+    }
+
+    .lead {
+      max-width: 720px;
+      margin-top: 18px;
+      color: #435267;
+      font-size: 17px;
+    }
+
+    .scope-list {
+      display: grid;
+      gap: 8px;
+      margin-top: 22px;
+      padding: 0;
+      list-style: none;
+    }
+
+    .scope-list li {
+      display: grid;
+      grid-template-columns: 26px minmax(0, 1fr);
+      gap: 8px;
+      align-items: start;
+      color: #344256;
+      font-weight: 640;
+    }
+
+    .scope-list span {
+      width: 22px;
+      height: 22px;
+      display: inline-grid;
+      place-items: center;
+      border-radius: 50%;
+      color: #fff;
+      background: var(--teal);
+      font-size: 13px;
+      font-weight: 900;
+    }
+
+    .role-map {
+      padding: 20px;
+      display: grid;
+      align-content: center;
+      gap: 14px;
+    }
+
+    .role-map h2 {
+      font-size: 18px;
+    }
+
+    .role-node {
+      border: 1px solid #dbe5ed;
+      background: #f8fbfd;
+      border-radius: 8px;
+      padding: 13px;
+    }
+
+    .role-node strong {
+      display: block;
+      font-size: 15px;
+      color: #1f2a37;
+    }
+
+    .role-node small {
+      display: block;
+      margin-top: 4px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .role-arrow {
+      text-align: center;
+      color: var(--teal);
+      font-weight: 900;
+      letter-spacing: 0;
+    }
+
+    .section-head {
+      margin: 30px 0 14px;
+      display: flex;
+      justify-content: space-between;
+      gap: 16px;
+      align-items: end;
+    }
+
+    .section-head h2 {
+      font-size: clamp(22px, 3vw, 30px);
+      line-height: 1.2;
+    }
+
+    .section-head p {
+      max-width: 460px;
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    .checklist {
+      display: grid;
+      gap: 14px;
+    }
+
+    .check-card {
+      display: grid;
+      grid-template-columns: 58px minmax(0, 1fr) minmax(260px, 0.82fr);
+      gap: 18px;
+      padding: 18px;
+      align-items: start;
+    }
+
+    .check-mark {
+      width: 46px;
+      height: 46px;
+      border-radius: 50%;
+      display: grid;
+      place-items: center;
+      color: #fff;
+      background: var(--green);
+      font-size: 26px;
+      font-weight: 900;
+      line-height: 1;
+      box-shadow: 0 10px 22px rgba(21, 128, 61, 0.2);
+    }
+
+    .check-main h3 {
+      font-size: 20px;
+      line-height: 1.25;
+      margin-bottom: 8px;
+    }
+
+    .check-main ul,
+    .acceptance ul,
+    .ready-card ul,
+    .boundary-card ul {
+      margin: 0;
+      padding-left: 20px;
+    }
+
+    .check-main li,
+    .acceptance li,
+    .ready-card li,
+    .boundary-card li {
+      margin: 4px 0;
+    }
+
+    .acceptance {
+      border-left: 4px solid var(--teal);
+      background: var(--soft);
+      border-radius: 8px;
+      padding: 13px 14px;
+    }
+
+    .acceptance strong {
+      display: block;
+      margin-bottom: 6px;
+      color: #1f3f3b;
+    }
+
+    .final-grid {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(260px, 0.76fr);
+      gap: 16px;
+      margin-top: 18px;
+    }
+
+    .ready-card,
+    .boundary-card {
+      padding: 20px;
+    }
+
+    .ready-card {
+      border-color: rgba(21, 128, 61, 0.28);
+      background: linear-gradient(180deg, #ffffff, #f1f8f4);
+    }
+
+    .boundary-card {
+      border-color: rgba(183, 121, 31, 0.32);
+      background: linear-gradient(180deg, #ffffff, #fff8ea);
+    }
+
+    .ready-card h2,
+    .boundary-card h2 {
+      font-size: 22px;
+      margin-bottom: 10px;
+    }
+
+    .ready-card li::marker {
+      color: var(--green);
+    }
+
+    .boundary-card li::marker {
+      color: var(--amber);
+    }
+
+    code {
+      background: #eef2f7;
+      border: 1px solid #dce4ef;
+      border-radius: 5px;
+      padding: 1px 5px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 0.94em;
+    }
+
+    @media (max-width: 840px) {
+      .hero,
+      .final-grid,
+      .check-card {
+        grid-template-columns: 1fr;
+      }
+
+      .topbar,
+      .section-head {
+        align-items: flex-start;
+        flex-direction: column;
+      }
+
+      .check-card {
+        gap: 12px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="shell">
+    <div class="topbar">
+      <a class="back-link" href="index.html">返回文档入口</a>
+      <span class="badge">硬件框架合格线</span>
+    </div>
+
+    <section class="hero">
+      <div class="hero-copy">
+        <p class="eyebrow">给教程读者的起步标准</p>
+        <h1>ESP32-C3 循线项目硬件框架搭建清单</h1>
+        <p class="lead">目标不是手把手教每一个 IO 口怎么配，而是把主控、传感器、底盘、供电、烧录和最小通信链路搭到可写算法的程度。全部打勾后，读者就有一个能承载核心代码、主循环和控制逻辑的工程底座。</p>
+        <ul class="scope-list">
+          <li><span>✓</span><p>只定义基础框架和合格线，不讲循线算法。</p></li>
+          <li><span>✓</span><p>只要求关键链路可验证，不绑定某一块开发板的具体引脚。</p></li>
+          <li><span>✓</span><p>先把硬件底座搭稳，再让读者自由发挥上层代码。</p></li>
+        </ul>
+      </div>
+
+      <aside class="role-map" aria-label="硬件角色关系">
+        <h2>三类硬件角色</h2>
+        <div class="role-node">
+          <strong>ESP32-C3 主控</strong>
+          <small>负责运行工程、读取数据、输出控制指令。</small>
+        </div>
+        <div class="role-arrow">⇅ 串口通信</div>
+        <div class="role-node">
+          <strong>8 路红外巡线模块</strong>
+          <small>只提供黑线/白底的传感数据。</small>
+        </div>
+        <div class="role-arrow">⇄ 运动指令</div>
+        <div class="role-node">
+          <strong>串口底盘模块</strong>
+          <small>只接收安全低速、零速等底盘命令。</small>
+        </div>
+      </aside>
+    </section>
+
+    <section>
+      <div class="section-head">
+        <h2>按这 6 步搭出可写算法的项目底座</h2>
+        <p>每一步都要能被观察或复现。看起来接好了不算，能稳定烧录、能收发、能停止、数据会变化，才算通过。</p>
+      </div>
+
+      <div class="checklist">
+        <article class="check-card">
+          <div class="check-mark">✓</div>
+          <div class="check-main">
+            <h3>1. 主控与模块角色确认</h3>
+            <ul>
+              <li>ESP32-C3 只做主控，承载工程和你要写的核心代码。</li>
+              <li>8 路红外模块只提供巡线传感数据。</li>
+              <li>串口底盘模块只接收运动指令，不承担算法判断。</li>
+            </ul>
+          </div>
+          <div class="acceptance">
+            <strong>完成标准</strong>
+            <p>三者职责清楚，没有把算法、传感器、底盘协议混成一个不可拆分的黑盒。</p>
+          </div>
+        </article>
+
+        <article class="check-card">
+          <div class="check-mark">✓</div>
+          <div class="check-main">
+            <h3>2. 供电与共地确认</h3>
+            <ul>
+              <li>电机和底盘供电稳定，ESP32-C3 不被电机电流拖垮。</li>
+              <li>ESP32-C3、底盘模块、红外模块必须共地。</li>
+              <li>USB 调试供电和电机供电之间避免反灌和干扰。</li>
+            </ul>
+          </div>
+          <div class="acceptance">
+            <strong>完成标准</strong>
+            <p>电机动作时 ESP32-C3 不重启，USB 日志不中断，模块读数不随机跳变。</p>
+          </div>
+        </article>
+
+        <article class="check-card">
+          <div class="check-mark">✓</div>
+          <div class="check-main">
+            <h3>3. 串口链路确认</h3>
+            <ul>
+              <li>底盘 UART：ESP32 TX 接底盘 RX，ESP32 RX 接底盘 TX。</li>
+              <li>传感器 UART：ESP32 TX 接模块 RX，ESP32 RX 接模块 TX。</li>
+              <li>如果外设是 5V TTL，ESP32-C3 侧必须做 3.3V 电平保护。</li>
+            </ul>
+          </div>
+          <div class="acceptance">
+            <strong>完成标准</strong>
+            <p>底盘串口和传感器串口能独立收发，互不占用，排查时能单独断开其中一路。</p>
+          </div>
+        </article>
+
+        <article class="check-card">
+          <div class="check-mark">✓</div>
+          <div class="check-main">
+            <h3>4. 固件工程能构建和烧录</h3>
+            <ul>
+              <li>ESP-IDF 环境可用，能选择 ESP32-C3 目标。</li>
+              <li>工程能稳定完成 build，不依赖临时手工补文件。</li>
+              <li>USB 烧录后设备能启动，并能看到启动日志。</li>
+            </ul>
+          </div>
+          <div class="acceptance">
+            <strong>完成标准</strong>
+            <p>读者有一个可反复编译、烧录、看日志的工程壳，后续改主循环不会先卡在环境问题上。</p>
+          </div>
+        </article>
+
+        <article class="check-card">
+          <div class="check-mark">✓</div>
+          <div class="check-main">
+            <h3>5. 底盘最小动作验证</h3>
+            <ul>
+              <li>写算法前，先验证底盘能接收一条安全低速指令。</li>
+              <li>低速动作要短、可控，测试区域要留出安全空间。</li>
+              <li>零速或停止指令必须比前进指令更优先验证。</li>
+            </ul>
+          </div>
+          <div class="acceptance">
+            <strong>完成标准</strong>
+            <p>能让底盘低速动一下，也能可靠停下；重复测试时行为一致。</p>
+          </div>
+        </article>
+
+        <article class="check-card">
+          <div class="check-mark">✓</div>
+          <div class="check-main">
+            <h3>6. 传感器最小读数验证</h3>
+            <ul>
+              <li>写算法前，先确认 8 路红外数据会随黑线/白底变化。</li>
+              <li>用遮挡、放线、移开线的方式观察每一路是否有响应。</li>
+              <li>记录清楚当前模块里黑线和白底分别对应什么电平或数值。</li>
+            </ul>
+          </div>
+          <div class="acceptance">
+            <strong>完成标准</strong>
+            <p>至少能看到 8 路状态随环境变化，并能分清黑线和白底语义。</p>
+          </div>
+        </article>
+      </div>
+    </section>
+
+    <section class="final-grid" aria-label="总验收">
+      <div class="ready-card">
+        <h2>当以下全部打勾，就可以开始写算法</h2>
+        <ul>
+          <li>工程能 build、能 USB 烧录、能看启动日志。</li>
+          <li>ESP32-C3、底盘、传感器供电稳定且共地。</li>
+          <li>底盘串口能让车低速动作，也能可靠停止。</li>
+          <li>传感器串口能读到 8 路数据变化。</li>
+          <li>两条串口链路互不冲突，能分别排查。</li>
+        </ul>
+      </div>
+
+      <div class="boundary-card">
+        <h2>这页不要求你完成什么</h2>
+        <ul>
+          <li>不要求固定使用某一组 GPIO。</li>
+          <li>不要求写出循线算法。</li>
+          <li>不要求完成参数调试页面。</li>
+          <li>不要求复刻现有项目的内部实现。</li>
+        </ul>
+      </div>
+    </section>
+  </main>
+</body>
+</html>

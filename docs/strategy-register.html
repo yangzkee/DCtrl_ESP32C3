@@ -236,7 +236,7 @@
       <h1>DCar-Liner 策略登记表</h1>
       <p class="subtitle">本页集中记录 DCar-Liner 车端、小程序协议、调试和安全策略。新增策略、修改策略或废弃策略时，优先更新本页，再同步代码、系统说明和模块契约。</p>
       <div class="meta">
-        <span class="pill">当前版本：2026-06-10</span>
+        <span class="pill">当前版本：2026-06-13</span>
         <span class="pill">主目标：ESP32-C3 实车循线</span>
         <span class="pill">主调试入口：DHelper 小程序 BLE</span>
         <span class="pill">维护规则：策略变化必须登记</span>
@@ -274,6 +274,7 @@
       <li><a href="#S20">S20 手动测试</a></li>
       <li><a href="#S21">S21 遥测观察</a></li>
       <li><a href="#S22">S22 蓝牙设备选择与命名</a></li>
+      <li><a href="#S23">S23 DCtrl 透明遥控桥</a></li>
     </ul>
 
     <h2>策略清单</h2>
@@ -348,7 +349,7 @@
       <h3 class="strategy-title"><span class="sid">S07</span>运动状态机</h3>
       <span class="tag safety">安全</span><span class="tag motion">状态</span>
       <table>
-        <tr><th>策略</th><td>车端主运动状态包括 <code>BOOT_INIT</code>、<code>SAFE_IDLE</code>、<code>PARAM_TUNING</code>、<code>MANUAL_TEST</code>、<code>AUTO_ARMED</code>、<code>AUTO_RUNNING</code>、<code>FAULT</code>，OTA 维护状态单独隔离。</td></tr>
+        <tr><th>策略</th><td>车端主运动状态包括 <code>BOOT_INIT</code>、<code>SAFE_IDLE</code>、<code>REMOTE_BRIDGE</code>、<code>PARAM_TUNING</code>、<code>MANUAL_TEST</code>、<code>AUTO_ARMED</code>、<code>AUTO_RUNNING</code>、<code>OTA_UPDATE</code>、<code>FAULT</code>。底盘 UART 只能由当前 active mode 写入。</td></tr>
         <tr><th>触发条件</th><td>调参、手动测试、自动准备、自动运行、故障和 OTA 必须通过状态转换控制。</td></tr>
         <tr><th>实现位置</th><td><code>components/vehicle_state/vehicle_state.c</code></td></tr>
         <tr><th>验证方法</th><td>通过 BLE JSON 发送 <code>arm_auto</code>、<code>start_auto</code>、<code>stop</code>，观察 telemetry 的 <code>vehicle.motion_state</code>。</td></tr>
@@ -371,7 +372,7 @@
       <span class="tag debug">无线</span>
       <table>
         <tr><th>策略</th><td>BLE Low Energy 是默认调试和小程序参数通道。Wi-Fi 默认关闭以降低功耗和供电压力。</td></tr>
-        <tr><th>协议</th><td>小程序短帧使用 <code>G</code>、<code>S...</code>、<code>N...</code>；长诊断使用 BLE JSON/分包。</td></tr>
+        <tr><th>协议</th><td>小程序调参短帧使用 <code>G</code>、<code>S...</code>、<code>N...</code>；遥控使用独立 DCtrl BLE 串口服务透传 DFLink；长诊断使用 BLE JSON/分包。</td></tr>
         <tr><th>实现位置</th><td><code>components/debug_server/debug_server_ble.c</code>；手机端已迁至 DHelper 小程序仓库 <code>miniapp/dcar-ble-remote/pages/line-tuning/</code></td></tr>
         <tr><th>验证方法</th><td>使用 DHelper 小程序或 <code>tools/ble_debug_tester.swift</code> 读取 <code>G</code>。</td></tr>
       </table>
@@ -514,10 +515,22 @@
       <h3 class="strategy-title"><span class="sid">S22</span>蓝牙设备选择与命名</h3>
       <span class="tag product">小程序</span><span class="tag debug">无线</span>
       <table>
-        <tr><th>策略</th><td>小程序必须让用户看到并选择 BLE 设备，不静默自动连接。BLE 名称可完整修改，支持中文、英文、数字、<code>-</code>、<code>_</code>，限制 1-20 个 UTF-8 字节。</td></tr>
-        <tr><th>扫描</th><td>默认优先筛选 DCtrl 设备，也可显示全部有名设备。手机侧最多保存 8 个已匹配名称作为扫描提示，不占用 ESP32 资源。</td></tr>
+        <tr><th>策略</th><td>小程序必须让用户看到并选择 BLE 设备，不静默自动连接。ESP32-C3 对外名称固定为 <code>DCtrl</code>，不再通过小程序改名。</td></tr>
+        <tr><th>扫描</th><td>主遥控只识别 <code>DCtrl</code> 名称或 DCtrl remote service UUID。不得恢复 WHEELTEC 名称、扫描兼容或优先连接。</td></tr>
         <tr><th>实现位置</th><td><code>components/debug_server/debug_server_ble.c</code>；手机端已迁至 DHelper 小程序仓库 <code>utils/bleProfiles.js</code> 和 <code>features/line-tuning/</code></td></tr>
-        <tr><th>验证方法</th><td>修改名称后断开重扫，应能看到新名称并重新连接。</td></tr>
+        <tr><th>验证方法</th><td>重扫时只能把 <code>DCtrl</code> 或带 DCtrl 服务 UUID 的设备作为主遥控候选。</td></tr>
+      </table>
+    </article>
+
+    <article class="strategy" id="S23">
+      <h3 class="strategy-title"><span class="sid">S23</span>DCtrl 透明遥控桥</h3>
+      <span class="tag product">小程序</span><span class="tag safety">隔离</span><span class="tag motion">遥控</span>
+      <table>
+        <tr><th>策略</th><td>DCtrl 遥控恢复旧蓝牙串口体验：小程序生成 21 字节 DFLink 底盘帧，ESP32-C3 BLE 收到后只转发到底盘 UART。</td></tr>
+        <tr><th>禁止项</th><td>不得恢复 13 字节 DCtrl 语义运动帧、ESP32 侧速度/yaw 换算、remote target 缓存、20ms 本地喂车或遥控 watchdog 运动循环。</td></tr>
+        <tr><th>隔离</th><td>遥控进入 <code>REMOTE_BRIDGE</code> 后，巡线控制器不启动、不读传感器、不发送后台 stop。BLE 断开只发送一次零速保护并回到 <code>SAFE_IDLE</code>。</td></tr>
+        <tr><th>实现位置</th><td><code>components/debug_server/debug_server_ble.c</code>、<code>components/vehicle_state</code>、DHelper 小程序 <code>utils/dflink.js</code> / <code>utils/velocityStream.js</code></td></tr>
+        <tr><th>验证方法</th><td><code>python3 tools/check_feature_boundaries.py</code>、小程序 <code>npm test</code>、C3 build/flash 后实测摇杆、松手零速和断连零速。</td></tr>
       </table>
     </article>
 

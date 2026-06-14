@@ -6,6 +6,7 @@
 #include "esp_check.h"
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
+#include "freertos/portmacro.h"
 #include "freertos/task.h"
 #include "line_sensor_uart.h"
 #include "line_trace_policy.h"
@@ -16,6 +17,14 @@
 #include "vehicle_state.h"
 
 static const char *TAG = "DCar-LinerCtl";
+static portMUX_TYPE s_task_lock = portMUX_INITIALIZER_UNLOCKED;
+static TaskHandle_t s_controller_task;
+typedef enum {
+    CONTROLLER_TASK_STOPPED = 0,
+    CONTROLLER_TASK_STARTING,
+    CONTROLLER_TASK_RUNNING,
+} controller_task_state_t;
+static controller_task_state_t s_controller_task_state = CONTROLLER_TASK_STOPPED;
 
 static int32_t get_int_param(const char *id, int32_t fallback)
 {
@@ -110,6 +119,16 @@ static void apply_policy_output(const line_trace_policy_output_t *output)
     }
 }
 
+static bool controller_should_run(const vehicle_state_snapshot_t *vehicle)
+{
+    if (vehicle == NULL) {
+        return false;
+    }
+    return vehicle->motion_state == VEHICLE_MOTION_MANUAL_TEST ||
+           vehicle->motion_state == VEHICLE_MOTION_AUTO_ARMED ||
+           vehicle->motion_state == VEHICLE_MOTION_AUTO_RUNNING;
+}
+
 static void controller_task(void *arg)
 {
     (void)arg;
@@ -119,10 +138,20 @@ static void controller_task(void *arg)
     while (true) {
         const int32_t timeout_ms = get_int_param("sensor.timeout_ms", 50);
         const int32_t loop_period_ms = get_int_param("control.loop_period_ms", 20);
-        vehicle_state_finish_manual_if_expired(vehicle_state_now_ms());
+        const bool manual_expired = vehicle_state_finish_manual_if_expired(vehicle_state_now_ms());
+        if (manual_expired) {
+            ESP_ERROR_CHECK_WITHOUT_ABORT(chassis_uart_stop());
+            const chassis_motion_cmd_t stop_cmd = {0};
+            telemetry_update_motion_cmd(&stop_cmd);
+        }
 
         vehicle_state_snapshot_t vehicle = {0};
         vehicle_state_get_snapshot(&vehicle);
+        if (!controller_should_run(&vehicle)) {
+            ESP_LOGI(TAG, "controller idle; task exiting");
+            break;
+        }
+
         line_trace_policy_input_t input = {0};
         motion_inputs_from_vehicle(&input, &vehicle);
         input.now_ms = vehicle_state_now_ms();
@@ -148,12 +177,48 @@ static void controller_task(void *arg)
         apply_policy_output(&output);
         vTaskDelay(pdMS_TO_TICKS(loop_period_ms));
     }
+
+    TaskHandle_t current_task = xTaskGetCurrentTaskHandle();
+    taskENTER_CRITICAL(&s_task_lock);
+    if (s_controller_task_state == CONTROLLER_TASK_STARTING ||
+        (s_controller_task_state == CONTROLLER_TASK_RUNNING &&
+         s_controller_task == current_task)) {
+        s_controller_task = NULL;
+        s_controller_task_state = CONTROLLER_TASK_STOPPED;
+    }
+    taskEXIT_CRITICAL(&s_task_lock);
+    vTaskDelete(NULL);
 }
 
 esp_err_t line_trace_controller_start(const board_profile_t *profile)
 {
-    ESP_RETURN_ON_FALSE(profile != NULL, ESP_ERR_INVALID_ARG, TAG, "missing board profile");
+    (void)profile;
 
-    BaseType_t ok = xTaskCreate(controller_task, "dcar_liner_ctl", 4096, NULL, 5, NULL);
-    return ok == pdPASS ? ESP_OK : ESP_ERR_NO_MEM;
+    taskENTER_CRITICAL(&s_task_lock);
+    if (s_controller_task_state != CONTROLLER_TASK_STOPPED) {
+        taskEXIT_CRITICAL(&s_task_lock);
+        return ESP_OK;
+    }
+    s_controller_task_state = CONTROLLER_TASK_STARTING;
+    taskEXIT_CRITICAL(&s_task_lock);
+
+    TaskHandle_t task = NULL;
+    BaseType_t ok = xTaskCreate(controller_task, "dcar_liner_ctl", 4096, NULL, 5, &task);
+    if (ok != pdPASS) {
+        taskENTER_CRITICAL(&s_task_lock);
+        if (s_controller_task_state == CONTROLLER_TASK_STARTING) {
+            s_controller_task_state = CONTROLLER_TASK_STOPPED;
+            s_controller_task = NULL;
+        }
+        taskEXIT_CRITICAL(&s_task_lock);
+        return ESP_ERR_NO_MEM;
+    }
+
+    taskENTER_CRITICAL(&s_task_lock);
+    if (s_controller_task_state == CONTROLLER_TASK_STARTING) {
+        s_controller_task = task;
+        s_controller_task_state = CONTROLLER_TASK_RUNNING;
+    }
+    taskEXIT_CRITICAL(&s_task_lock);
+    return ESP_OK;
 }

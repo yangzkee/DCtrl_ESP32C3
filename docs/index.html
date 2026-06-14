@@ -73,6 +73,24 @@
       font-size: 15px;
     }
 
+    .doc-links {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      justify-content: flex-end;
+    }
+
+    .doc-links a {
+      color: var(--teal);
+      border: 1px solid var(--line);
+      background: #fff;
+      border-radius: 6px;
+      padding: 7px 9px;
+      font-size: 13px;
+      font-weight: 700;
+      text-decoration: none;
+    }
+
     .workspace {
       display: grid;
       grid-template-columns: minmax(300px, 390px) minmax(0, 1fr);
@@ -521,6 +539,12 @@
         <h1>二连杆水平可达范围计算器</h1>
         <p>固定点在原点，末端在负半轴高度 <strong>y = H</strong> 上水平移动。实时计算最大横向位置、连续行程、可达区间和当前目标点状态。</p>
       </div>
+      <nav class="doc-links" aria-label="维护文档">
+        <a href="hardware-framework-checklist.html">硬件框架清单</a>
+        <a href="vehicle-feature-mode-maintenance.md">功能模式维护规范</a>
+        <a href="developer-guide.md">开发指南</a>
+        <a href="system-guide.html">系统说明</a>
+      </nav>
     </header>
 
     <div class="workspace">

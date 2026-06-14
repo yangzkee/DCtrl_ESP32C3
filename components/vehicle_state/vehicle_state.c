@@ -42,11 +42,56 @@ void vehicle_state_finish_boot(void)
     taskEXIT_CRITICAL(&s_lock);
 }
 
+esp_err_t vehicle_state_enter_remote_bridge(void)
+{
+    taskENTER_CRITICAL(&s_lock);
+    const bool can_enter =
+        (s_state.motion_state == VEHICLE_MOTION_SAFE_IDLE ||
+         s_state.motion_state == VEHICLE_MOTION_REMOTE_BRIDGE) &&
+        (s_state.debug_session == VEHICLE_DEBUG_VIEW_ONLY ||
+         s_state.debug_session == VEHICLE_DEBUG_REMOTE_ACTIVE);
+    if (!can_enter) {
+        taskEXIT_CRITICAL(&s_lock);
+        return ESP_ERR_INVALID_STATE;
+    }
+    set_state_locked(VEHICLE_MOTION_REMOTE_BRIDGE, VEHICLE_DEBUG_REMOTE_ACTIVE, VEHICLE_FAULT_NONE);
+    taskEXIT_CRITICAL(&s_lock);
+    return ESP_OK;
+}
+
+esp_err_t vehicle_state_exit_remote_bridge(void)
+{
+    taskENTER_CRITICAL(&s_lock);
+    if (s_state.motion_state == VEHICLE_MOTION_SAFE_IDLE &&
+        s_state.debug_session == VEHICLE_DEBUG_VIEW_ONLY) {
+        taskEXIT_CRITICAL(&s_lock);
+        return ESP_OK;
+    }
+    if (s_state.motion_state != VEHICLE_MOTION_REMOTE_BRIDGE ||
+        s_state.debug_session != VEHICLE_DEBUG_REMOTE_ACTIVE) {
+        taskEXIT_CRITICAL(&s_lock);
+        return ESP_ERR_INVALID_STATE;
+    }
+    set_state_locked(VEHICLE_MOTION_SAFE_IDLE, VEHICLE_DEBUG_VIEW_ONLY, VEHICLE_FAULT_NONE);
+    taskEXIT_CRITICAL(&s_lock);
+    return ESP_OK;
+}
+
+bool vehicle_state_is_remote_bridge(void)
+{
+    bool active = false;
+    taskENTER_CRITICAL(&s_lock);
+    active = s_state.motion_state == VEHICLE_MOTION_REMOTE_BRIDGE &&
+             s_state.debug_session == VEHICLE_DEBUG_REMOTE_ACTIVE;
+    taskEXIT_CRITICAL(&s_lock);
+    return active;
+}
+
 esp_err_t vehicle_state_enter_tuning(void)
 {
     taskENTER_CRITICAL(&s_lock);
-    if (s_state.motion_state == VEHICLE_MOTION_FAULT ||
-        s_state.motion_state == VEHICLE_MOTION_OTA_UPDATE) {
+    if (s_state.motion_state != VEHICLE_MOTION_SAFE_IDLE &&
+        s_state.motion_state != VEHICLE_MOTION_PARAM_TUNING) {
         taskEXIT_CRITICAL(&s_lock);
         return ESP_ERR_INVALID_STATE;
     }
@@ -111,8 +156,8 @@ void vehicle_state_stop(void)
 esp_err_t vehicle_state_enter_ota_update(void)
 {
     taskENTER_CRITICAL(&s_lock);
-    if (s_state.motion_state == VEHICLE_MOTION_BOOT_INIT ||
-        s_state.motion_state == VEHICLE_MOTION_OTA_UPDATE) {
+    if (s_state.motion_state != VEHICLE_MOTION_SAFE_IDLE ||
+        s_state.debug_session != VEHICLE_DEBUG_VIEW_ONLY) {
         taskEXIT_CRITICAL(&s_lock);
         return ESP_ERR_INVALID_STATE;
     }
@@ -230,6 +275,8 @@ const char *vehicle_motion_state_name(vehicle_motion_state_t state)
         return "BOOT_INIT";
     case VEHICLE_MOTION_SAFE_IDLE:
         return "SAFE_IDLE";
+    case VEHICLE_MOTION_REMOTE_BRIDGE:
+        return "REMOTE_BRIDGE";
     case VEHICLE_MOTION_PARAM_TUNING:
         return "PARAM_TUNING";
     case VEHICLE_MOTION_MANUAL_TEST:
@@ -252,6 +299,8 @@ const char *vehicle_debug_session_name(vehicle_debug_session_t session)
     switch (session) {
     case VEHICLE_DEBUG_VIEW_ONLY:
         return "VIEW_ONLY";
+    case VEHICLE_DEBUG_REMOTE_ACTIVE:
+        return "REMOTE_ACTIVE";
     case VEHICLE_DEBUG_TUNING_ACTIVE:
         return "TUNING_ACTIVE";
     case VEHICLE_DEBUG_OTA_ACTIVE:

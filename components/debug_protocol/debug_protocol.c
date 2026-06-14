@@ -7,6 +7,7 @@
 #include "cJSON.h"
 #include "chassis_uart.h"
 #include "esp_log.h"
+#include "line_trace_controller.h"
 #include "param_store.h"
 #include "telemetry.h"
 #include "vehicle_state.h"
@@ -263,6 +264,7 @@ static esp_err_t handle_state_transition(esp_err_t (*transition)(void),
 static esp_err_t handle_stop(char *response_json, size_t response_size)
 {
     vehicle_state_stop();
+    ESP_ERROR_CHECK_WITHOUT_ABORT(chassis_uart_stop());
     return write_state_response(response_json, response_size, "stopped");
 }
 
@@ -332,6 +334,11 @@ static esp_err_t handle_manual_motion(cJSON *root, char *response_json, size_t r
     esp_err_t err = vehicle_state_start_manual_test(&cmd, (uint32_t)duration_ms);
     if (err != ESP_OK) {
         return write_state_error(response_json, response_size, "manual_motion_invalid_state");
+    }
+    if (cmd.vx_mm_s == 0 && cmd.vy_mm_s == 0 && cmd.yaw_mdeg == 0) {
+        ESP_ERROR_CHECK_WITHOUT_ABORT(chassis_uart_stop());
+    } else {
+        ESP_ERROR_CHECK_WITHOUT_ABORT(line_trace_controller_start(NULL));
     }
     return write_state_response(response_json, response_size, "manual_motion_started");
 }
@@ -432,12 +439,18 @@ esp_err_t debug_protocol_handle_message(const char *request_json, char *response
                                       response_size,
                                       "auto_armed",
                                       "arm_auto_invalid_state");
+        if (err == ESP_OK) {
+            ESP_ERROR_CHECK_WITHOUT_ABORT(line_trace_controller_start(NULL));
+        }
     } else if (strcmp(type->valuestring, "start_auto") == 0) {
         err = handle_state_transition(vehicle_state_start_auto,
                                       response_json,
                                       response_size,
                                       "auto_started",
                                       "start_auto_invalid_state");
+        if (err == ESP_OK) {
+            ESP_ERROR_CHECK_WITHOUT_ABORT(line_trace_controller_start(NULL));
+        }
     } else if (strcmp(type->valuestring, "stop") == 0) {
         err = handle_stop(response_json, response_size);
     } else if (strcmp(type->valuestring, "clear_fault") == 0) {

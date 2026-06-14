@@ -11,11 +11,8 @@ struct Config {
     var deviceNamePrefix = defaultDeviceNamePrefix
     var motion = "zero"
     var timeoutSeconds = 15.0
-}
-
-func appendInt16LE(_ value: Int16, to data: inout Data) {
-    var little = value.littleEndian
-    withUnsafeBytes(of: &little) { data.append(contentsOf: $0) }
+    var durationMs = 500
+    var intervalMs = 50
 }
 
 func appendInt32LE(_ value: Int32, to data: inout Data) {
@@ -23,40 +20,74 @@ func appendInt32LE(_ value: Int32, to data: inout Data) {
     withUnsafeBytes(of: &little) { data.append(contentsOf: $0) }
 }
 
-func remotePayload(motion: String) -> Data {
-    let tuple: (Int16, Int16, Int32)
+func appendUInt16LE(_ value: UInt16, to data: inout Data) {
+    var little = value.littleEndian
+    withUnsafeBytes(of: &little) { data.append(contentsOf: $0) }
+}
+
+func dflinkFixedF32(_ value: Double) -> Int32 {
+    return Int32((value * 10000.0).rounded())
+}
+
+func degreesToRadians(_ value: Double) -> Double {
+    return value * Double.pi / 180.0
+}
+
+func motionVelocityFrame(vx: Double, vy: Double, vzDegPerCommand: Double) -> Data {
+    var payload = Data()
+    appendInt32LE(dflinkFixedF32(vx), to: &payload)
+    appendInt32LE(dflinkFixedF32(vy), to: &payload)
+    appendInt32LE(dflinkFixedF32(degreesToRadians(vzDegPerCommand)), to: &payload)
+
+    var frame = Data([0xdf, 0x01, 0x97, 0x02, 0x62, 0x0c])
+    frame.append(payload)
+    frame.append(0xfd)
+    let checksum = frame.reduce(UInt16(0)) { ($0 &+ UInt16($1)) & 0xffff }
+    appendUInt16LE(checksum, to: &frame)
+    return frame
+}
+
+func remoteFrames(motion: String, durationMs: Int, intervalMs: Int) -> [Data] {
+    let active: Data
     switch motion {
     case "forward":
-        tuple = (500, 0, 0)
+        active = motionVelocityFrame(vx: 0.5, vy: 0, vzDegPerCommand: 0)
     case "backward":
-        tuple = (-500, 0, 0)
+        active = motionVelocityFrame(vx: -0.5, vy: 0, vzDegPerCommand: 0)
     case "strafe":
-        tuple = (0, 500, 0)
+        active = motionVelocityFrame(vx: 0, vy: 0.5, vzDegPerCommand: 0)
     case "yaw":
-        tuple = (0, 0, 1500)
+        active = motionVelocityFrame(vx: 0, vy: 0, vzDegPerCommand: 5)
     default:
-        tuple = (0, 0, 0)
+        return [motionVelocityFrame(vx: 0, vy: 0, vzDegPerCommand: 0)]
     }
 
-    var data = Data([0x44, 0x43, 0x01, 0x01])
-    appendInt16LE(tuple.0, to: &data)
-    appendInt16LE(tuple.1, to: &data)
-    appendInt32LE(tuple.2, to: &data)
-    let checksum = data.reduce(UInt8(0)) { $0 &+ $1 }
-    data.append(checksum)
-    return data
+    let safeInterval = max(1, intervalMs)
+    let activeCount = max(1, Int((max(durationMs, safeInterval) + safeInterval - 1) / safeInterval))
+    let zero = motionVelocityFrame(vx: 0, vy: 0, vzDegPerCommand: 0)
+    return Array(repeating: active, count: activeCount) + [zero, zero, zero]
+}
+
+func hexString(_ data: Data) -> String {
+    return data.map { String(format: "%02X", $0) }.joined(separator: " ")
 }
 
 final class BLERemoteTester: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate {
     private let config: Config
+    private let frames: [Data]
     private var central: CBCentralManager!
     private var peripheral: CBPeripheral?
     private var rxCharacteristic: CBCharacteristic?
     private var txCharacteristic: CBCharacteristic?
+    private var writeIndex = 0
+    private var waitingForErrorWindow = false
     private var finished = false
 
     init(config: Config) {
         self.config = config
+        self.frames = remoteFrames(motion: config.motion,
+                                   durationMs: config.durationMs,
+                                   intervalMs: config.intervalMs)
         super.init()
         central = CBCentralManager(delegate: self, queue: DispatchQueue.main)
     }
@@ -111,7 +142,7 @@ final class BLERemoteTester: NSObject, CBCentralManagerDelegate, CBPeripheralDel
                         didDisconnectPeripheral peripheral: CBPeripheral,
                         error: Error?) {
         if !finished {
-            finish(false, "disconnected before OK: \(error?.localizedDescription ?? "none")")
+            finish(false, "disconnected before completion: \(error?.localizedDescription ?? "none")")
         }
     }
 
@@ -157,16 +188,20 @@ final class BLERemoteTester: NSObject, CBCentralManagerDelegate, CBPeripheralDel
             finish(false, "notify failed: \(error.localizedDescription)")
             return
         }
-        writeMotion()
+        writeNextFrame()
     }
 
-    private func writeMotion() {
+    private func writeNextFrame() {
         guard let rx = rxCharacteristic else {
             finish(false, "missing RX characteristic")
             return
         }
-        let payload = remotePayload(motion: config.motion)
-        print("write_motion motion=\(config.motion) bytes=\(payload.count)")
+        if writeIndex >= frames.count {
+            finishAfterQuietWindow()
+            return
+        }
+        let payload = frames[writeIndex]
+        print("write_motion motion=\(config.motion) frame=\(writeIndex + 1)/\(frames.count) bytes=\(payload.count) hex=\(hexString(payload))")
         peripheral?.writeValue(payload, for: rx, type: .withResponse)
     }
 
@@ -177,7 +212,16 @@ final class BLERemoteTester: NSObject, CBCentralManagerDelegate, CBPeripheralDel
             finish(false, "write failed: \(error.localizedDescription)")
             return
         }
-        print("write_ack")
+        print("write_ack frame=\(writeIndex + 1)/\(frames.count)")
+        writeIndex += 1
+        if writeIndex >= frames.count {
+            finishAfterQuietWindow()
+        } else {
+            let interval = Double(max(1, config.intervalMs)) / 1000.0
+            DispatchQueue.main.asyncAfter(deadline: .now() + interval) {
+                self.writeNextFrame()
+            }
+        }
     }
 
     func peripheral(_ peripheral: CBPeripheral,
@@ -195,10 +239,20 @@ final class BLERemoteTester: NSObject, CBCentralManagerDelegate, CBPeripheralDel
         }
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         print("remote_response=\(trimmed)")
-        if trimmed == "OK" {
-            finish(true, "remote motion accepted")
-        } else {
+        if trimmed.hasPrefix("E:") {
             finish(false, "remote returned \(trimmed)")
+        } else {
+            print("remote_notice_ignored=\(trimmed)")
+        }
+    }
+
+    private func finishAfterQuietWindow() {
+        if waitingForErrorWindow {
+            return
+        }
+        waitingForErrorWindow = true
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+            self.finish(true, "all DFLink Motion_Velocity writes completed without remote error")
         }
     }
 
@@ -244,6 +298,10 @@ func parseArgs() -> Config {
             if !args.isEmpty { config.motion = args.removeFirst() }
         case "--timeout":
             if !args.isEmpty { config.timeoutSeconds = Double(args.removeFirst()) ?? config.timeoutSeconds }
+        case "--duration-ms":
+            if !args.isEmpty { config.durationMs = Int(args.removeFirst()) ?? config.durationMs }
+        case "--interval-ms":
+            if !args.isEmpty { config.intervalMs = Int(args.removeFirst()) ?? config.intervalMs }
         case "--help", "-h":
             print("""
             Usage:
@@ -253,6 +311,8 @@ func parseArgs() -> Config {
               --name NAME          Exact BLE device name. If omitted, scans by DCtrl prefix.
               --name-prefix TEXT   BLE device name prefix, default DCtrl
               --motion NAME        zero, forward, backward, strafe, or yaw. Default zero.
+              --duration-ms MS     Non-zero motion repeat duration, default 500
+              --interval-ms MS     Repeat interval, default 50
               --timeout SECONDS    Overall timeout, default 15
             """)
             exit(0)

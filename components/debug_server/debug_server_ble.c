@@ -34,16 +34,7 @@ static const char *TAG = "debug_server_ble";
 #define BLE_DIRECT_RESPONSE_BYTES 180
 #define BLE_CHUNK_DATA_BYTES 160
 #define BLE_CHUNK_JSON_BYTES 512
-#define BLE_DEVICE_NAME_BYTES 21
-#define REMOTE_V1_BYTES 13
-#define REMOTE_V1_MAGIC_0 0x44
-#define REMOTE_V1_MAGIC_1 0x43
-#define REMOTE_V1_VERSION 0x01
-#define REMOTE_V1_TYPE_MOTION 0x01
-#define REMOTE_LEGACY_FRAME_BYTES 21
-#define REMOTE_FEED_PERIOD_MS 20
-#define REMOTE_WATCHDOG_MS 650
-#define REMOTE_PI 3.14159265358979323846f
+#define REMOTE_BRIDGE_MAX_WRITE_BYTES 244
 #define BLE_NAME_NAMESPACE "dcar_ble"
 #define BLE_NAME_KEY "name"
 #define BLE_NAME_LEGACY_SUFFIX_KEY "suffix"
@@ -56,7 +47,6 @@ static bool s_notify_enabled;
 static bool s_remote_notify_enabled;
 static bool s_started;
 static char s_device_name[24] = BLE_DEVICE_NAME_PREFIX;
-static char s_default_device_name[24] = BLE_DEVICE_NAME_PREFIX;
 static nvs_handle_t s_name_nvs;
 static bool s_name_nvs_open;
 static size_t s_chunk_offset;
@@ -65,12 +55,6 @@ static size_t s_rx_stream_len;
 static char s_last_request[BLE_REQUEST_BYTES];
 static char s_last_response[BLE_RESPONSE_BYTES] = "{\"type\":\"ble_ready\",\"status\":\"ok\"}";
 static char s_rx_stream[BLE_REQUEST_BYTES];
-static portMUX_TYPE s_remote_lock = portMUX_INITIALIZER_UNLOCKED;
-static volatile bool s_remote_active;
-static volatile uint32_t s_remote_last_command_ms;
-static chassis_motion_cmd_t s_remote_target_cmd;
-static uint8_t s_remote_legacy_frame[REMOTE_LEGACY_FRAME_BYTES];
-static size_t s_remote_legacy_len;
 
 static const ble_uuid128_t s_service_uuid =
     BLE_UUID128_INIT(0x43, 0x52, 0x41, 0x4c, 0x7c, 0x0f, 0xc7, 0xb5,
@@ -281,77 +265,10 @@ static bool is_compact_prefix(char ch)
     return ch == 'G' || ch == 'S' || ch == 'W' || ch == 'N' || ch == 'C';
 }
 
-static bool is_ascii_name_char(unsigned char ch)
-{
-    return (ch >= '0' && ch <= '9') ||
-           (ch >= 'A' && ch <= 'Z') ||
-           (ch >= 'a' && ch <= 'z') ||
-           ch == '-' ||
-           ch == '_';
-}
-
-static bool decode_cjk_codepoint(const unsigned char *data, size_t len, size_t *offset)
-{
-    if (*offset + 3 > len) {
-        return false;
-    }
-    unsigned char b0 = data[*offset];
-    unsigned char b1 = data[*offset + 1];
-    unsigned char b2 = data[*offset + 2];
-    if ((b0 & 0xf0) != 0xe0 || (b1 & 0xc0) != 0x80 || (b2 & 0xc0) != 0x80) {
-        return false;
-    }
-
-    uint32_t codepoint = ((uint32_t)(b0 & 0x0f) << 12) |
-                         ((uint32_t)(b1 & 0x3f) << 6) |
-                         (uint32_t)(b2 & 0x3f);
-    if (codepoint < 0x4e00 || codepoint > 0x9fff) {
-        return false;
-    }
-    *offset += 3;
-    return true;
-}
-
-static bool validate_device_name(const char *raw, char *out, size_t out_size)
-{
-    size_t len = strlen(raw);
-    if (len == 0 || len >= out_size || len >= BLE_DEVICE_NAME_BYTES) {
-        return false;
-    }
-
-    const unsigned char *bytes = (const unsigned char *)raw;
-    size_t offset = 0;
-    while (offset < len) {
-        unsigned char ch = bytes[offset];
-        if (ch < 0x80) {
-            if (!is_ascii_name_char(ch)) {
-                return false;
-            }
-            offset++;
-            continue;
-        }
-        if (!decode_cjk_codepoint(bytes, len, &offset)) {
-            return false;
-        }
-    }
-
-    if (out != raw) {
-        snprintf(out, out_size, "%s", raw);
-    }
-    return true;
-}
-
 static esp_err_t set_gap_device_name(void)
 {
     int rc = ble_svc_gap_device_name_set(s_device_name);
     return rc == 0 ? ESP_OK : ESP_FAIL;
-}
-
-static esp_err_t persist_device_name(const char *name)
-{
-    (void)name;
-    snprintf(s_device_name, sizeof(s_device_name), "%s", BLE_DEVICE_NAME_PREFIX);
-    return set_gap_device_name();
 }
 
 static esp_err_t reset_device_name(void)
@@ -481,12 +398,8 @@ static int process_rx_compact(const char *data, size_t len)
         if (strcmp(frame + 2, "*") == 0) {
             err = reset_device_name();
         } else {
-            char name[BLE_DEVICE_NAME_BYTES] = {0};
-            if (!validate_device_name(frame + 2, name, sizeof(name))) {
-                set_text_response("E:RANGE\n");
-                return 0;
-            }
-            err = persist_device_name(name);
+            set_text_response("E:FIXED\n");
+            return 0;
         }
         set_text_response(err == ESP_OK ? "OK\n" : "E:SAVE\n");
         return 0;
@@ -654,117 +567,6 @@ static int write_rx_request(struct ble_gatt_access_ctxt *ctxt)
     return process_rc;
 }
 
-static uint8_t remote_checksum8(const uint8_t *buffer, size_t len)
-{
-    uint8_t sum = 0;
-    for (size_t i = 0; i < len; ++i) {
-        sum = (uint8_t)(sum + buffer[i]);
-    }
-    return sum;
-}
-
-static uint16_t remote_checksum16(const uint8_t *buffer, size_t len)
-{
-    uint16_t sum = 0;
-    for (size_t i = 0; i < len; ++i) {
-        sum = (uint16_t)(sum + buffer[i]);
-    }
-    return sum;
-}
-
-static int16_t remote_read_i16_le(const uint8_t *buffer)
-{
-    return (int16_t)((uint16_t)buffer[0] | ((uint16_t)buffer[1] << 8));
-}
-
-static int32_t remote_read_i32_le(const uint8_t *buffer)
-{
-    return (int32_t)((uint32_t)buffer[0] |
-                     ((uint32_t)buffer[1] << 8) |
-                     ((uint32_t)buffer[2] << 16) |
-                     ((uint32_t)buffer[3] << 24));
-}
-
-static int32_t remote_round_float_to_i32(float value)
-{
-    if (value >= 0.0f) {
-        return (int32_t)(value + 0.5f);
-    }
-    return (int32_t)(value - 0.5f);
-}
-
-static int32_t remote_fixed_f32_axis_to_mm_s(int32_t fixed)
-{
-    if (fixed >= 0) {
-        return (fixed + 5) / 10;
-    }
-    return (fixed - 5) / 10;
-}
-
-static int32_t remote_fixed_f32_vz_to_yaw_mdeg(int32_t fixed)
-{
-    const float radians = (float)fixed / 10000.0f;
-    return remote_round_float_to_i32(radians * (180000.0f / REMOTE_PI));
-}
-
-static bool remote_motion_is_zero(const chassis_motion_cmd_t *cmd)
-{
-    return cmd != NULL &&
-           cmd->vx_mm_s == 0 &&
-           cmd->vy_mm_s == 0 &&
-           cmd->yaw_mdeg == 0;
-}
-
-static bool remote_frame_is_valid_motion_velocity(const uint8_t *frame, size_t len)
-{
-    if (frame == NULL || len != REMOTE_LEGACY_FRAME_BYTES) {
-        return false;
-    }
-    if (frame[0] != DFLINK_FRAME_HEAD ||
-        frame[1] != DFLINK_TARGET_ID ||
-        frame[2] != DFLINK_SOURCE_ID ||
-        frame[3] != DFLINK_A_MOTION ||
-        frame[4] != DFLINK_B_MOTION_VELOCITY ||
-        frame[5] != DFLINK_MOTION_VELOCITY_PAYLOAD_BYTES ||
-        frame[18] != DFLINK_FRAME_TAIL) {
-        return false;
-    }
-
-    uint16_t expected = (uint16_t)frame[19] | ((uint16_t)frame[20] << 8);
-    return expected == remote_checksum16(frame, 19);
-}
-
-static bool remote_legacy_frame_to_motion(const uint8_t *frame, size_t len, chassis_motion_cmd_t *cmd)
-{
-    if (!remote_frame_is_valid_motion_velocity(frame, len) || cmd == NULL) {
-        return false;
-    }
-
-    cmd->vx_mm_s = remote_fixed_f32_axis_to_mm_s(remote_read_i32_le(&frame[6]));
-    cmd->vy_mm_s = remote_fixed_f32_axis_to_mm_s(remote_read_i32_le(&frame[10]));
-    cmd->yaw_mdeg = remote_fixed_f32_vz_to_yaw_mdeg(remote_read_i32_le(&frame[14]));
-    return true;
-}
-
-static bool remote_v1_to_motion(const uint8_t *bytes, size_t len, chassis_motion_cmd_t *cmd)
-{
-    if (bytes == NULL || cmd == NULL || len != REMOTE_V1_BYTES) {
-        return false;
-    }
-    if (bytes[0] != REMOTE_V1_MAGIC_0 ||
-        bytes[1] != REMOTE_V1_MAGIC_1 ||
-        bytes[2] != REMOTE_V1_VERSION ||
-        bytes[3] != REMOTE_V1_TYPE_MOTION ||
-        bytes[12] != remote_checksum8(bytes, 12)) {
-        return false;
-    }
-
-    cmd->vx_mm_s = remote_read_i16_le(&bytes[4]);
-    cmd->vy_mm_s = remote_read_i16_le(&bytes[6]);
-    cmd->yaw_mdeg = remote_read_i32_le(&bytes[8]);
-    return true;
-}
-
 static void remote_notify_text(const char *text)
 {
     if (!s_remote_notify_enabled || s_conn_handle == BLE_HS_CONN_HANDLE_NONE || text == NULL) {
@@ -780,193 +582,48 @@ static void remote_notify_text(const char *text)
     }
 }
 
-static bool remote_motion_allowed(bool is_zero)
+static bool remote_bridge_is_active(void)
 {
-    if (is_zero) {
-        return true;
-    }
-
-    vehicle_state_snapshot_t snapshot = {0};
-    vehicle_state_get_snapshot(&snapshot);
-    return snapshot.motion_state == VEHICLE_MOTION_SAFE_IDLE &&
-           snapshot.debug_session == VEHICLE_DEBUG_VIEW_ONLY;
-}
-
-static void remote_target_set(const chassis_motion_cmd_t *cmd, uint32_t command_ms)
-{
-    taskENTER_CRITICAL(&s_remote_lock);
-    s_remote_target_cmd = *cmd;
-    s_remote_active = true;
-    s_remote_last_command_ms = command_ms;
-    taskEXIT_CRITICAL(&s_remote_lock);
-}
-
-static void remote_target_clear(void)
-{
-    taskENTER_CRITICAL(&s_remote_lock);
-    s_remote_target_cmd = (chassis_motion_cmd_t){0};
-    s_remote_active = false;
-    s_remote_last_command_ms = 0;
-    taskEXIT_CRITICAL(&s_remote_lock);
-}
-
-static bool remote_target_is_active(void)
-{
-    bool active = false;
-    taskENTER_CRITICAL(&s_remote_lock);
-    active = s_remote_active;
-    taskEXIT_CRITICAL(&s_remote_lock);
-    return active;
-}
-
-static bool remote_target_snapshot(chassis_motion_cmd_t *cmd, uint32_t *last_command_ms)
-{
-    bool active = false;
-    taskENTER_CRITICAL(&s_remote_lock);
-    active = s_remote_active;
-    if (active && cmd != NULL) {
-        *cmd = s_remote_target_cmd;
-    }
-    if (last_command_ms != NULL) {
-        *last_command_ms = s_remote_last_command_ms;
-    }
-    taskEXIT_CRITICAL(&s_remote_lock);
-    return active;
-}
-
-static bool remote_target_expire_if_needed(uint32_t now_ms)
-{
-    bool expired = false;
-    taskENTER_CRITICAL(&s_remote_lock);
-    if (s_remote_active && s_remote_last_command_ms != 0 &&
-        (int32_t)(now_ms - s_remote_last_command_ms) > REMOTE_WATCHDOG_MS) {
-        s_remote_target_cmd = (chassis_motion_cmd_t){0};
-        s_remote_active = false;
-        s_remote_last_command_ms = 0;
-        expired = true;
-    }
-    taskEXIT_CRITICAL(&s_remote_lock);
-    return expired;
-}
-
-static void remote_send_stop(const char *reason, const char *notify_text)
-{
-    ESP_LOGW(TAG, "remote stop: %s", reason == NULL ? "unknown" : reason);
-    ESP_ERROR_CHECK_WITHOUT_ABORT(chassis_uart_stop());
-    const chassis_motion_cmd_t stop_cmd = {0};
-    telemetry_update_motion_cmd(&stop_cmd);
-    if (notify_text != NULL) {
-        remote_notify_text(notify_text);
-    }
-}
-
-static int remote_execute_motion(const chassis_motion_cmd_t *cmd)
-{
-    bool is_zero = remote_motion_is_zero(cmd);
-    if (!remote_motion_allowed(is_zero)) {
-        ESP_LOGW(TAG, "remote non-zero motion rejected outside SAFE_IDLE");
-        remote_notify_text("E:BUSY\n");
-        return 0;
-    }
-
-    if (is_zero) {
-        remote_target_clear();
-        esp_err_t err = chassis_uart_stop();
-        if (err != ESP_OK) {
-            ESP_LOGW(TAG, "remote zero write failed: %s", esp_err_to_name(err));
-            remote_notify_text("E:UART\n");
-            return 0;
-        }
-        telemetry_update_motion_cmd(cmd);
-        remote_notify_text("OK\n");
-        return 0;
-    }
-
-    remote_target_set(cmd, vehicle_state_now_ms());
-    telemetry_update_motion_cmd(cmd);
-    ESP_LOGD(TAG, "remote target vx=%ld vy=%ld yaw=%ld",
-             (long)cmd->vx_mm_s,
-             (long)cmd->vy_mm_s,
-             (long)cmd->yaw_mdeg);
-    remote_notify_text("OK\n");
-    return 0;
-}
-
-static int remote_process_legacy_bytes(const uint8_t *bytes, size_t len)
-{
-    if (bytes == NULL || len == 0 || len > REMOTE_LEGACY_FRAME_BYTES) {
-        remote_notify_text("E:LEN\n");
-        s_remote_legacy_len = 0;
-        return 0;
-    }
-
-    if (len == REMOTE_LEGACY_FRAME_BYTES) {
-        chassis_motion_cmd_t cmd = {0};
-        if (!remote_legacy_frame_to_motion(bytes, len, &cmd)) {
-            remote_notify_text("E:FRAME\n");
-            return 0;
-        }
-        s_remote_legacy_len = 0;
-        return remote_execute_motion(&cmd);
-    }
-
-    if (bytes[0] == DFLINK_FRAME_HEAD) {
-        s_remote_legacy_len = 0;
-    } else if (s_remote_legacy_len == 0) {
-        remote_notify_text("E:LEN\n");
-        return 0;
-    }
-
-    if (s_remote_legacy_len + len > REMOTE_LEGACY_FRAME_BYTES) {
-        s_remote_legacy_len = 0;
-        remote_notify_text("E:LEN\n");
-        return 0;
-    }
-
-    memcpy(&s_remote_legacy_frame[s_remote_legacy_len], bytes, len);
-    s_remote_legacy_len += len;
-    if (s_remote_legacy_len < REMOTE_LEGACY_FRAME_BYTES) {
-        return 0;
-    }
-
-    chassis_motion_cmd_t cmd = {0};
-    if (!remote_legacy_frame_to_motion(s_remote_legacy_frame, s_remote_legacy_len, &cmd)) {
-        s_remote_legacy_len = 0;
-        remote_notify_text("E:FRAME\n");
-        return 0;
-    }
-    s_remote_legacy_len = 0;
-    return remote_execute_motion(&cmd);
+    return vehicle_state_is_remote_bridge();
 }
 
 static int write_remote_request(struct ble_gatt_access_ctxt *ctxt)
 {
     int len = OS_MBUF_PKTLEN(ctxt->om);
-    if (len <= 0 || len > REMOTE_LEGACY_FRAME_BYTES) {
+    if (len <= 0 || len > REMOTE_BRIDGE_MAX_WRITE_BYTES) {
+        telemetry_record_remote_bridge_error("LEN", len > 0 ? (size_t)len : 0, ESP_ERR_INVALID_SIZE);
         remote_notify_text("E:LEN\n");
         return 0;
     }
 
-    uint8_t bytes[REMOTE_LEGACY_FRAME_BYTES] = {0};
+    esp_err_t state_err = vehicle_state_enter_remote_bridge();
+    if (state_err != ESP_OK) {
+        ESP_LOGW(TAG, "remote bridge rejected outside SAFE_IDLE/REMOTE_BRIDGE");
+        telemetry_record_remote_bridge_error("BUSY", (size_t)len, state_err);
+        remote_notify_text("E:BUSY\n");
+        return 0;
+    }
+
+    uint8_t bytes[REMOTE_BRIDGE_MAX_WRITE_BYTES] = {0};
     int rc = os_mbuf_copydata(ctxt->om, 0, len, bytes);
     if (rc != 0) {
+        telemetry_record_remote_bridge_error("COPY", (size_t)len, ESP_FAIL);
         remote_notify_text("E:COPY\n");
         return BLE_ATT_ERR_UNLIKELY;
     }
 
-    if (len == REMOTE_V1_BYTES &&
-        bytes[0] == REMOTE_V1_MAGIC_0 &&
-        bytes[1] == REMOTE_V1_MAGIC_1) {
-        chassis_motion_cmd_t cmd = {0};
-        s_remote_legacy_len = 0;
-        if (!remote_v1_to_motion(bytes, len, &cmd)) {
-            remote_notify_text("E:FRAME\n");
-            return 0;
-        }
-        return remote_execute_motion(&cmd);
+    uint32_t tx_bytes = 0;
+    esp_err_t err = chassis_uart_write_raw(bytes, (size_t)len, &tx_bytes);
+    if (err != ESP_OK) {
+        ESP_LOGW(TAG, "remote bridge UART write failed: %s", esp_err_to_name(err));
+        telemetry_record_remote_bridge_error("UART", (size_t)len, err);
+        remote_notify_text("E:UART\n");
+        return 0;
     }
 
-    return remote_process_legacy_bytes(bytes, (size_t)len);
+    telemetry_record_remote_bridge_success((size_t)len, tx_bytes);
+    ESP_LOGD(TAG, "remote bridge forwarded %lu byte(s)", (unsigned long)tx_bytes);
+    return 0;
 }
 
 static int gatt_access_cb(uint16_t conn_handle, uint16_t attr_handle,
@@ -1026,6 +683,24 @@ static void start_advertising(void)
     ESP_LOGI(TAG, "BLE advertising name=%s remote=6d1f0001-5b9b-4f4e-9c67-7b1f4d430001 tuning=7b3a0001-8d4d-4b9a-b5c7-0f7c4c415243", s_device_name);
 }
 
+static void request_fast_conn_params(uint16_t conn_handle)
+{
+    struct ble_gap_upd_params conn_params = {
+        .itvl_min = 12,             /* 12 * 1.25ms = 15ms */
+        .itvl_max = 12,             /* 12 * 1.25ms = 15ms */
+        .latency = 0,
+        .supervision_timeout = 400, /* 400 * 10ms = 4000ms */
+        .min_ce_len = 0,
+        .max_ce_len = 0,
+    };
+    int rc = ble_gap_update_params(conn_handle, &conn_params);
+    if (rc != 0) {
+        ESP_LOGW(TAG, "conn param update request failed rc=%d", rc);
+    } else {
+        ESP_LOGI(TAG, "requested conn interval 15ms latency=0 timeout=4000ms");
+    }
+}
+
 static int ble_gap_event(struct ble_gap_event *event, void *arg)
 {
     (void)arg;
@@ -1034,20 +709,43 @@ static int ble_gap_event(struct ble_gap_event *event, void *arg)
     case BLE_GAP_EVENT_CONNECT:
         if (event->connect.status == 0) {
             s_conn_handle = event->connect.conn_handle;
+            s_rx_stream_len = 0;
             ESP_LOGI(TAG, "BLE connected conn=%u", s_conn_handle);
+            /* Request a short connection interval so high-rate remote velocity frames
+             * reach the chassis promptly. The phone's default here is 30ms, which (with
+             * the 50ms send cadence and per-frame Vz increment) leaves periodic gaps.
+             * Re-requested on the MTU event because a connect-time request collides with
+             * the phone's initial MTU exchange (HCI 0x2A different-transaction-collision). */
+            request_fast_conn_params(s_conn_handle);
+            {
+                struct ble_gap_conn_desc desc0;
+                if (ble_gap_conn_find(s_conn_handle, &desc0) == 0) {
+                    ESP_LOGI(TAG, "conn@connect itvl_units=%u (x1.25ms) latency=%u timeout_units=%u (x10ms)",
+                             desc0.conn_itvl, desc0.conn_latency, desc0.supervision_timeout);
+                }
+            }
         } else {
             ESP_LOGW(TAG, "BLE connect failed status=%d", event->connect.status);
             start_advertising();
         }
         break;
+    case BLE_GAP_EVENT_CONN_UPDATE: {
+        struct ble_gap_conn_desc descu;
+        if (ble_gap_conn_find(event->conn_update.conn_handle, &descu) == 0) {
+            ESP_LOGI(TAG, "conn_update status=%d itvl_units=%u (x1.25ms) latency=%u timeout_units=%u (x10ms)",
+                     event->conn_update.status, descu.conn_itvl, descu.conn_latency, descu.supervision_timeout);
+        }
+        break;
+    }
     case BLE_GAP_EVENT_DISCONNECT:
         ESP_LOGI(TAG, "BLE disconnected reason=%d", event->disconnect.reason);
         vehicle_state_snapshot_t snapshot = {0};
         vehicle_state_get_snapshot(&snapshot);
-        const bool remote_was_active = remote_target_is_active();
+        const bool remote_was_active = remote_bridge_is_active();
         if (snapshot.motion_state == VEHICLE_MOTION_AUTO_ARMED ||
             snapshot.motion_state == VEHICLE_MOTION_AUTO_RUNNING ||
             snapshot.motion_state == VEHICLE_MOTION_MANUAL_TEST ||
+            snapshot.motion_state == VEHICLE_MOTION_REMOTE_BRIDGE ||
             remote_was_active) {
             ESP_LOGW(TAG, "BLE disconnected while vehicle active; stopping chassis");
             ESP_ERROR_CHECK_WITHOUT_ABORT(chassis_uart_stop());
@@ -1055,10 +753,11 @@ static int ble_gap_event(struct ble_gap_event *event, void *arg)
             telemetry_update_motion_cmd(&stop_cmd);
             vehicle_state_stop();
         }
-        remote_target_clear();
         s_conn_handle = BLE_HS_CONN_HANDLE_NONE;
         s_notify_enabled = false;
         s_remote_notify_enabled = false;
+        s_rx_stream_len = 0;
+        telemetry_end_remote_bridge_session();
         start_advertising();
         break;
     case BLE_GAP_EVENT_ADV_COMPLETE:
@@ -1075,6 +774,8 @@ static int ble_gap_event(struct ble_gap_event *event, void *arg)
         break;
     case BLE_GAP_EVENT_MTU:
         ESP_LOGI(TAG, "BLE mtu=%u", event->mtu.value);
+        /* MTU exchange is done, so this re-request avoids the connect-time collision. */
+        request_fast_conn_params(event->mtu.conn_handle);
         break;
     default:
         break;
@@ -1112,7 +813,6 @@ static int gatt_init(void)
 
 static void build_device_name(void)
 {
-    snprintf(s_default_device_name, sizeof(s_default_device_name), "%s", BLE_DEVICE_NAME_PREFIX);
     snprintf(s_device_name, sizeof(s_device_name), "%s", BLE_DEVICE_NAME_PREFIX);
 
     esp_err_t err = nvs_open(BLE_NAME_NAMESPACE, NVS_READWRITE, &s_name_nvs);
@@ -1126,30 +826,6 @@ static void build_device_name(void)
     if ((erase_name_err == ESP_OK || erase_name_err == ESP_ERR_NVS_NOT_FOUND) &&
         (erase_suffix_err == ESP_OK || erase_suffix_err == ESP_ERR_NVS_NOT_FOUND)) {
         ESP_ERROR_CHECK_WITHOUT_ABORT(nvs_commit(s_name_nvs));
-    }
-}
-
-static void remote_control_task(void *param)
-{
-    (void)param;
-    while (true) {
-        uint32_t now_ms = vehicle_state_now_ms();
-        if (remote_target_expire_if_needed(now_ms)) {
-            remote_send_stop("watchdog", "STOP\n");
-        } else {
-            chassis_motion_cmd_t cmd = {0};
-            if (remote_target_snapshot(&cmd, NULL)) {
-                esp_err_t err = chassis_uart_send_motion(&cmd);
-                if (err != ESP_OK) {
-                    ESP_LOGW(TAG, "remote feed write failed: %s", esp_err_to_name(err));
-                    remote_target_clear();
-                    const chassis_motion_cmd_t stop_cmd = {0};
-                    telemetry_update_motion_cmd(&stop_cmd);
-                    remote_notify_text("E:UART\n");
-                }
-            }
-        }
-        vTaskDelay(pdMS_TO_TICKS(REMOTE_FEED_PERIOD_MS));
     }
 }
 
@@ -1191,11 +867,6 @@ esp_err_t debug_server_ble_start(void)
     }
 
     nimble_port_freertos_init(host_task);
-    BaseType_t task_ok = xTaskCreate(remote_control_task, "dctrl_remote_ctl", 3072, NULL, 5, NULL);
-    if (task_ok != pdPASS) {
-        ESP_LOGE(TAG, "create remote control task failed");
-        return ESP_ERR_NO_MEM;
-    }
     s_started = true;
     ESP_LOGI(TAG, "BLE debug transport started");
     return ESP_OK;

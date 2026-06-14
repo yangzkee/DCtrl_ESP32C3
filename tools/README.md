@@ -66,7 +66,7 @@ The compact `G` response is `P<kp>,<ki>,<kd>,<gear>`. The compact `S` command wr
 
 ## BLE Remote Tester
 
-`ble_remote_tester.swift` targets the independent DCtrl remote service and sends the 13-byte remote v1 motion frame used by the WeChat joystick.
+`ble_remote_tester.swift` targets the independent DCtrl remote service and sends raw 21-byte DFLink `Motion_Velocity` frames through the transparent bridge. It is the Mac-side smoke tester for the same wire contract used by the WeChat joystick: `Vx/Vy` are encoded as m/s and `Vz` is encoded as rad/cmd after the business-level deg/cmd conversion.
 
 ```sh
 swift tools/ble_remote_tester.swift --timeout 25 --motion zero
@@ -75,4 +75,4 @@ swift tools/ble_remote_tester.swift --timeout 25 --motion strafe
 swift tools/ble_remote_tester.swift --timeout 25 --motion yaw
 ```
 
-The tester passes only when the remote TX notify returns `OK`; `E:BUSY`, `E:UART`, `E:FRAME`, or timeout fails the run.
+For non-zero motions the tester repeats the active frame every `50 ms` for `500 ms`, then sends three zero-speed frames. The remote bridge success path is intentionally silent; the tester passes when all CoreBluetooth writes complete and no `E:*` remote error arrives. `E:BUSY`, `E:UART`, `E:LEN`, `E:COPY`, disconnect, or timeout fails the run.

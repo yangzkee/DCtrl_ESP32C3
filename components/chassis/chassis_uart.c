@@ -367,6 +367,19 @@ esp_err_t chassis_uart_send_motion(const chassis_motion_cmd_t *cmd)
     return err;
 }
 
+esp_err_t chassis_uart_write_raw(const uint8_t *bytes, size_t len, uint32_t *tx_bytes)
+{
+    ESP_RETURN_ON_FALSE(s_ready && bytes != NULL && len > 0, ESP_ERR_INVALID_ARG, TAG, "invalid raw write");
+    ESP_RETURN_ON_ERROR(take_uart_mutex(pdMS_TO_TICKS(100)), TAG, "take raw uart mutex");
+
+    esp_err_t err = write_bytes_locked(bytes, len);
+    give_uart_mutex();
+    if (err == ESP_OK && tx_bytes != NULL) {
+        *tx_bytes += (uint32_t)len;
+    }
+    return err;
+}
+
 esp_err_t chassis_uart_stop(void)
 {
     const chassis_motion_cmd_t stop_cmd = {

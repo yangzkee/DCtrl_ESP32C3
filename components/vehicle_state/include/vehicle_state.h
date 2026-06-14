@@ -13,6 +13,7 @@ extern "C" {
 typedef enum {
     VEHICLE_MOTION_BOOT_INIT = 0,
     VEHICLE_MOTION_SAFE_IDLE,
+    VEHICLE_MOTION_REMOTE_BRIDGE,
     VEHICLE_MOTION_PARAM_TUNING,
     VEHICLE_MOTION_MANUAL_TEST,
     VEHICLE_MOTION_AUTO_ARMED,
@@ -23,6 +24,7 @@ typedef enum {
 
 typedef enum {
     VEHICLE_DEBUG_VIEW_ONLY = 0,
+    VEHICLE_DEBUG_REMOTE_ACTIVE,
     VEHICLE_DEBUG_TUNING_ACTIVE,
     VEHICLE_DEBUG_OTA_ACTIVE,
 } vehicle_debug_session_t;
@@ -48,6 +50,9 @@ typedef struct {
 
 void vehicle_state_init(void);
 void vehicle_state_finish_boot(void);
+esp_err_t vehicle_state_enter_remote_bridge(void);
+esp_err_t vehicle_state_exit_remote_bridge(void);
+bool vehicle_state_is_remote_bridge(void);
 esp_err_t vehicle_state_enter_tuning(void);
 esp_err_t vehicle_state_exit_tuning(void);
 esp_err_t vehicle_state_arm_auto(void);

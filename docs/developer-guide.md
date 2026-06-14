@@ -16,6 +16,16 @@ The firmware has these core modules:
 - `debug_server`: on-demand Wi-Fi SoftAP, HTTP API, WebSocket endpoint, HTTP OTA upload, and BLE GATT debug transport.
 - `telemetry`: latest line sensor, line UART diagnostics, motion command, PID output, and parameter version snapshot.
 
+## Feature Mode Ownership
+
+The chassis UART is a shared physical resource. Current active modes are `SAFE_IDLE`, `REMOTE_BRIDGE`, `PARAM_TUNING`, `MANUAL_TEST`, `AUTO_ARMED`, `AUTO_RUNNING`, `OTA_UPDATE`, and `FAULT`. Only the active mode may write motion bytes to the chassis. `REMOTE_BRIDGE` is intentionally thin: it forwards DCtrl BLE writes to `chassis_uart_write_raw()` and does not parse velocity, cache targets, convert yaw units, run a local feed loop, or send success ACKs on the high-rate path. Remote bridge success is silent; errors still notify as `E:*`. The bridge only updates observation telemetry counters for field diagnosis; those counters must not influence motion behavior. Remote telemetry sessions are scoped to one continuous write run: BLE disconnect ends a session, and a gap above 3000 ms before the next write starts a new session.
+
+The shared remote-motion coordinate truth is `X > 0` forward, `Y > 0` left translation, and `Z/Yaw > 0` left/counterclockwise rotation. DHelper maps joystick, button, and motion-control inputs into that coordinate frame before encoding DFLink; firmware bridge code must not add another sign layer.
+
+`line_trace_controller` must not be started from `app_main`. It starts only when `manual_motion`, `arm_auto`, or `start_auto` enters a line-control mode, and exits when the state returns to tuning, idle, remote bridge, OTA, or fault. The start path must reserve a `STARTING` state before `xTaskCreate()` so concurrent BLE/Wi-Fi requests cannot create duplicate controller tasks. Disabled and idle line-trace states must not send periodic `chassis_uart_stop()`; only explicit stop, disconnect, manual-test timeout, OTA entry, or fault handling may send a one-shot zero-speed frame.
+
+Future features must follow `docs/vehicle-feature-mode-maintenance.md` before touching chassis UART ownership. A new feature must define its goal, inputs, outputs, independent test, failure rules, and integration boundary before it is wired into shared motion output.
+
 ## Current Line Map Scope
 
 The current project map is intentionally simple: a single black-tape irregular circle on the floor. The irregularity is the natural placement error from hand-taping, not a designed maze. The vehicle only needs to stay on that loop and continue following the line.
@@ -197,6 +207,7 @@ When a board is still running the older single-app firmware, flash once over USB
 Default wireless mode:
 
 - BLE starts by default as the low-power tuning/debug entry.
+- DCtrl remote bridge starts as a transparent BLE UART service. The mini program sends 21-byte DFLink frames; firmware forwards BLE write bytes to the chassis UART unchanged. For remote rotation, the mini program owns business-level `Vz deg/cmd` and encodes it to DFLink wire-level `rad/cmd` before BLE write.
 - Wi-Fi SoftAP is off by default to reduce power draw.
 - The compact BLE command `W1` starts the fallback Wi-Fi SoftAP and HTTP/WebSocket server.
 
@@ -231,28 +242,29 @@ BLE debug transport:
 
 - Stack: NimBLE BLE GATT, not Classic Bluetooth SPP. This keeps the firmware compatible with ESP32-C3, which supports BLE but not Classic Bluetooth.
 - Device name prefix: `DCtrl`.
-- Default runtime device name: `DCtrl`. BLE rename commands are accepted only as compatibility no-ops.
+- Default runtime device name: `DCtrl`. BLE rename commands are disabled; `N=*` only clears old stored names and confirms the fixed name.
 - Service UUID: `7b3a0001-8d4d-4b9a-b5c7-0f7c4c415243`.
 - RX characteristic UUID: `7b3a0002-8d4d-4b9a-b5c7-0f7c4c415243`, write compact frames or JSON requests here.
 - TX characteristic UUID: `7b3a0003-8d4d-4b9a-b5c7-0f7c4c415243`, read compact frames or JSON responses here.
 - TX notifications are optional. When enabled, the firmware sends a small `ble_response_ready` notice after a request is handled; the client should then read TX.
 - Short TX reads return the JSON response directly.
 - Long TX reads return one or more chunk envelopes. Each envelope has `type:"ble_chunk"`, `seq`, `offset`, `total`, `done`, and `data`. The client must append `data` until `done:true`, then parse the assembled JSON.
+- The RX stream buffer is scoped to one BLE connection. Firmware clears any partial compact/JSON request on connect and disconnect so an unfinished write cannot pollute the next request or next client session.
 
 Compact BLE frames for the DHelper mini program `line-tuning` feature:
 
 - `G\n`: read the four phone-facing params.
 - Response: `P<kp>,<ki>,<kd>,<gear>\n`, for example `P9000,0,0,2`.
 - `S<kp>,<ki>,<kd>,<gear>\n`: write and save the four params.
-- `N\n`: read the current BLE advertising name.
-- Response: `N<name>\n`, for example `NDCar-Liner-F47786`.
-- `N=<name>\n`: write and save a complete BLE advertising name. The name is limited to 1-20 UTF-8 bytes and may contain CJK Chinese characters, ASCII letters, digits, `-`, and `_`.
-- `N=*\n`: clear the custom name and restore the default Bluetooth-MAC name.
+- `N\n`: read the fixed BLE advertising name.
+- Response: `NDCtrl\n`.
+- `N=<name>\n`: disabled compatibility command; returns `E:FIXED\n`.
+- `N=*\n`: clear any old custom-name NVS keys and restore/confirm the fixed `DCtrl` name.
 - Successful response: `OK\n`.
-- Error responses: `E:PARSE\n`, `E:RANGE\n`, `E:FAULT\n`, `E:BUSY\n`, or `E:SAVE\n`.
+- Error responses: `E:PARSE\n`, `E:RANGE\n`, `E:FIXED\n`, `E:FAULT\n`, `E:BUSY\n`, or `E:SAVE\n`.
 - `W1\n`: start the fallback Wi-Fi debug server.
 
-After `N=<name>` or `N=*`, disconnect and scan again. BLE advertising fields are refreshed when advertising restarts.
+Do not reintroduce editable BLE names. The mini program must scan/connect by fixed `DCtrl` name or the DCtrl service UUID.
 
 The DHelper mini program line-tracing controls use BLE JSON requests on the same RX/TX
 characteristics:
@@ -413,6 +425,13 @@ Each run creates:
 - `line.quality`
 - `motion.linear_mm_s`
 - `motion.angular_mdeg_s`
+- `remote_bridge.success`
+- `remote_bridge.errors`
+- `remote_bridge.session_id`
+- `remote_bridge.session_success`
+- `remote_bridge.last_gap_ms`
+- `remote_bridge.max_gap_ms`
+- `remote_bridge.last_error_code`
 - `controller.line_phase`
 - `controller.lost_line`
 - `controller.pid_output_mdeg_s`
@@ -458,6 +477,8 @@ The chassis driver sends DFLink `Motion_Velocity` for continuous line-following 
   value before sending it to the chassis.
 - `Vy` is fixed at `0`.
 - `angular_mdeg_s` is now treated as a per-command Z angle increment in millidegrees and maps to DFLink `Vz` as radians per command. The chassis must receive commands continuously to keep moving.
+
+For DCtrl remote control, the firmware does not call this conversion path. The mini program is the source of truth for DFLink remote frames, including `Vz deg/cmd` to wire `rad/cmd` conversion, and the ESP32-C3 remote service only forwards raw bytes. This preserves the old Bluetooth-serial behavior and prevents phone-side and firmware-side motion strategies from fighting each other.
 
 The official firmware also includes probe-style chassis diagnostics, so the
 temporary standalone probe firmware is no longer part of the maintained path.

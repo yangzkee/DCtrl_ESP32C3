@@ -43,6 +43,14 @@ static void set_stop_intent(motion_intent_t *intent, line_trace_phase_t phase)
     intent->pid_output_mdeg_s = 0.0f;
 }
 
+static void set_noop_intent(motion_intent_t *intent, line_trace_phase_t phase)
+{
+    intent->phase = phase;
+    intent->plan.chassis_action = CONTROL_CHASSIS_ACTION_NONE;
+    intent->plan.chassis_cmd = (chassis_motion_cmd_t){0};
+    intent->pid_output_mdeg_s = 0.0f;
+}
+
 static void set_stop_to_idle_intent(motion_intent_t *intent, line_trace_phase_t phase)
 {
     set_stop_intent(intent, phase);
@@ -261,7 +269,7 @@ void motion_policy_plan(line_trace_policy_runtime_t *runtime,
             }
             set_fixed_search_intent(runtime, intent, LINE_TRACE_PHASE_SENSOR_FAULT);
         } else {
-            set_stop_intent(intent, LINE_TRACE_PHASE_SENSOR_FAULT);
+            set_noop_intent(intent, LINE_TRACE_PHASE_SENSOR_FAULT);
         }
         runtime->phase = intent->phase;
         publish_recovery_state(runtime, intent);
@@ -276,7 +284,7 @@ void motion_policy_plan(line_trace_policy_runtime_t *runtime,
         line_trace_policy_reset_pid(runtime);
         reset_fault_grace(runtime);
         runtime->has_last_cmd = false;
-        set_stop_intent(intent, LINE_TRACE_PHASE_STOPPED);
+        set_noop_intent(intent, LINE_TRACE_PHASE_STOPPED);
         runtime->phase = intent->phase;
         publish_recovery_state(runtime, intent);
         return;
@@ -286,7 +294,7 @@ void motion_policy_plan(line_trace_policy_runtime_t *runtime,
         line_trace_policy_reset_pid(runtime);
         reset_fault_grace(runtime);
         runtime->has_last_cmd = false;
-        set_stop_intent(intent, LINE_TRACE_PHASE_ACQUIRE_LINE);
+        set_noop_intent(intent, LINE_TRACE_PHASE_ACQUIRE_LINE);
         runtime->phase = intent->phase;
         publish_recovery_state(runtime, intent);
         return;
@@ -296,7 +304,7 @@ void motion_policy_plan(line_trace_policy_runtime_t *runtime,
         line_trace_policy_reset_pid(runtime);
         reset_fault_grace(runtime);
         runtime->has_last_cmd = false;
-        set_stop_intent(intent, LINE_TRACE_PHASE_STOPPED);
+        set_noop_intent(intent, LINE_TRACE_PHASE_STOPPED);
         runtime->phase = intent->phase;
         publish_recovery_state(runtime, intent);
         return;
