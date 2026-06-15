@@ -18,7 +18,6 @@ typedef enum {
     VEHICLE_MOTION_MANUAL_TEST,
     VEHICLE_MOTION_AUTO_ARMED,
     VEHICLE_MOTION_AUTO_RUNNING,
-    VEHICLE_MOTION_OTA_UPDATE,
     VEHICLE_MOTION_FAULT,
 } vehicle_motion_state_t;
 
@@ -26,7 +25,6 @@ typedef enum {
     VEHICLE_DEBUG_VIEW_ONLY = 0,
     VEHICLE_DEBUG_REMOTE_ACTIVE,
     VEHICLE_DEBUG_TUNING_ACTIVE,
-    VEHICLE_DEBUG_OTA_ACTIVE,
 } vehicle_debug_session_t;
 
 typedef enum {
@@ -35,7 +33,6 @@ typedef enum {
     VEHICLE_FAULT_LINE_LOST,
     VEHICLE_FAULT_CHASSIS_SEND_FAILED,
     VEHICLE_FAULT_INVALID_COMMAND,
-    VEHICLE_FAULT_OTA_FAILED,
 } vehicle_fault_reason_t;
 
 typedef struct {
@@ -58,9 +55,6 @@ esp_err_t vehicle_state_exit_tuning(void);
 esp_err_t vehicle_state_arm_auto(void);
 esp_err_t vehicle_state_start_auto(void);
 void vehicle_state_stop(void);
-esp_err_t vehicle_state_enter_ota_update(void);
-void vehicle_state_finish_ota_update(void);
-bool vehicle_state_is_ota_update(void);
 esp_err_t vehicle_state_clear_fault(void);
 void vehicle_state_enter_fault(vehicle_fault_reason_t reason);
 esp_err_t vehicle_state_start_manual_test(const chassis_motion_cmd_t *cmd, uint32_t duration_ms);

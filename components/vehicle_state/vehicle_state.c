@@ -145,48 +145,8 @@ void vehicle_state_stop(void)
     taskENTER_CRITICAL(&s_lock);
     s_state.manual_cmd = (chassis_motion_cmd_t){0};
     s_state.manual_deadline_ms = 0;
-    if (s_state.motion_state == VEHICLE_MOTION_OTA_UPDATE) {
-        s_state.last_command_ms = vehicle_state_now_ms();
-    } else {
-        set_state_locked(VEHICLE_MOTION_SAFE_IDLE, VEHICLE_DEBUG_VIEW_ONLY, VEHICLE_FAULT_NONE);
-    }
+    set_state_locked(VEHICLE_MOTION_SAFE_IDLE, VEHICLE_DEBUG_VIEW_ONLY, VEHICLE_FAULT_NONE);
     taskEXIT_CRITICAL(&s_lock);
-}
-
-esp_err_t vehicle_state_enter_ota_update(void)
-{
-    taskENTER_CRITICAL(&s_lock);
-    if (s_state.motion_state != VEHICLE_MOTION_SAFE_IDLE ||
-        s_state.debug_session != VEHICLE_DEBUG_VIEW_ONLY) {
-        taskEXIT_CRITICAL(&s_lock);
-        return ESP_ERR_INVALID_STATE;
-    }
-
-    s_state.manual_cmd = (chassis_motion_cmd_t){0};
-    s_state.manual_deadline_ms = 0;
-    set_state_locked(VEHICLE_MOTION_OTA_UPDATE, VEHICLE_DEBUG_OTA_ACTIVE, VEHICLE_FAULT_NONE);
-    taskEXIT_CRITICAL(&s_lock);
-    return ESP_OK;
-}
-
-void vehicle_state_finish_ota_update(void)
-{
-    taskENTER_CRITICAL(&s_lock);
-    if (s_state.motion_state == VEHICLE_MOTION_OTA_UPDATE) {
-        s_state.manual_cmd = (chassis_motion_cmd_t){0};
-        s_state.manual_deadline_ms = 0;
-        set_state_locked(VEHICLE_MOTION_SAFE_IDLE, VEHICLE_DEBUG_VIEW_ONLY, VEHICLE_FAULT_NONE);
-    }
-    taskEXIT_CRITICAL(&s_lock);
-}
-
-bool vehicle_state_is_ota_update(void)
-{
-    bool active = false;
-    taskENTER_CRITICAL(&s_lock);
-    active = s_state.motion_state == VEHICLE_MOTION_OTA_UPDATE;
-    taskEXIT_CRITICAL(&s_lock);
-    return active;
 }
 
 esp_err_t vehicle_state_clear_fault(void)
@@ -285,8 +245,6 @@ const char *vehicle_motion_state_name(vehicle_motion_state_t state)
         return "AUTO_ARMED";
     case VEHICLE_MOTION_AUTO_RUNNING:
         return "AUTO_RUNNING";
-    case VEHICLE_MOTION_OTA_UPDATE:
-        return "OTA_UPDATE";
     case VEHICLE_MOTION_FAULT:
         return "FAULT";
     default:
@@ -303,8 +261,6 @@ const char *vehicle_debug_session_name(vehicle_debug_session_t session)
         return "REMOTE_ACTIVE";
     case VEHICLE_DEBUG_TUNING_ACTIVE:
         return "TUNING_ACTIVE";
-    case VEHICLE_DEBUG_OTA_ACTIVE:
-        return "OTA_ACTIVE";
     default:
         return "UNKNOWN";
     }
@@ -323,8 +279,6 @@ const char *vehicle_fault_reason_name(vehicle_fault_reason_t reason)
         return "CHASSIS_SEND_FAILED";
     case VEHICLE_FAULT_INVALID_COMMAND:
         return "INVALID_COMMAND";
-    case VEHICLE_FAULT_OTA_FAILED:
-        return "OTA_FAILED";
     default:
         return "UNKNOWN";
     }

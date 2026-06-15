@@ -156,8 +156,7 @@ static void controller_task(void *arg)
         motion_inputs_from_vehicle(&input, &vehicle);
         input.now_ms = vehicle_state_now_ms();
 
-        if (input.run_mode != LINE_TRACE_RUN_MANUAL_TEST &&
-            vehicle.motion_state != VEHICLE_MOTION_OTA_UPDATE) {
+        if (input.run_mode != LINE_TRACE_RUN_MANUAL_TEST) {
             esp_err_t err = line_sensor_uart_read_sample(&input.sample, timeout_ms);
             if (err == ESP_OK) {
                 motion_inputs_apply_line_inversion(&input.sample, get_bool_param("sensor.invert_bits", false));

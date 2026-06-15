@@ -13,16 +13,16 @@ The firmware has these core modules:
 - `control`: motion-control pipeline split into contracts, input normalization, line interpretation, motion intent, and execution output.
 - `param_store`: live tunable parameter registry plus NVS persistence.
 - `debug_protocol`: JSON request/response protocol for fallback Wi-Fi/BLE diagnostics.
-- `debug_server`: on-demand Wi-Fi SoftAP, HTTP API, WebSocket endpoint, HTTP OTA upload, and BLE GATT debug transport.
+- `debug_server`: on-demand Wi-Fi SoftAP, HTTP API, WebSocket endpoint, and BLE GATT debug transport.
 - `telemetry`: latest line sensor, line UART diagnostics, motion command, PID output, and parameter version snapshot.
 
 ## Feature Mode Ownership
 
-The chassis UART is a shared physical resource. Current active modes are `SAFE_IDLE`, `REMOTE_BRIDGE`, `PARAM_TUNING`, `MANUAL_TEST`, `AUTO_ARMED`, `AUTO_RUNNING`, `OTA_UPDATE`, and `FAULT`. Only the active mode may write motion bytes to the chassis. `REMOTE_BRIDGE` is intentionally thin: it forwards DCtrl BLE writes to `chassis_uart_write_raw()` and does not parse velocity, cache targets, convert yaw units, run a local feed loop, or send success ACKs on the high-rate path. Remote bridge success is silent; errors still notify as `E:*`. The bridge only updates observation telemetry counters for field diagnosis; those counters must not influence motion behavior. Remote telemetry sessions are scoped to one continuous write run: BLE disconnect ends a session, and a gap above 3000 ms before the next write starts a new session.
+The chassis UART is a shared physical resource. Current active modes are `SAFE_IDLE`, `REMOTE_BRIDGE`, `PARAM_TUNING`, `MANUAL_TEST`, `AUTO_ARMED`, `AUTO_RUNNING`, and `FAULT`. Only the active mode may write motion bytes to the chassis. `REMOTE_BRIDGE` is intentionally thin: it forwards DCtrl BLE writes to `chassis_uart_write_raw()` and does not parse velocity, cache targets, convert yaw units, run a local feed loop, or send success ACKs on the high-rate path. Remote bridge success is silent; errors still notify as `E:*`. The bridge only updates observation telemetry counters for field diagnosis; those counters must not influence motion behavior. Remote telemetry sessions are scoped to one continuous write run: BLE disconnect ends a session, and a gap above 3000 ms before the next write starts a new session.
 
 The shared remote-motion coordinate truth is `X > 0` forward, `Y > 0` left translation, and `Z/Yaw > 0` left/counterclockwise rotation. DHelper maps joystick, button, and motion-control inputs into that coordinate frame before encoding DFLink; firmware bridge code must not add another sign layer.
 
-`line_trace_controller` must not be started from `app_main`. It starts only when `manual_motion`, `arm_auto`, or `start_auto` enters a line-control mode, and exits when the state returns to tuning, idle, remote bridge, OTA, or fault. The start path must reserve a `STARTING` state before `xTaskCreate()` so concurrent BLE/Wi-Fi requests cannot create duplicate controller tasks. Disabled and idle line-trace states must not send periodic `chassis_uart_stop()`; only explicit stop, disconnect, manual-test timeout, OTA entry, or fault handling may send a one-shot zero-speed frame.
+`line_trace_controller` must not be started from `app_main`. It starts only when `manual_motion`, `arm_auto`, or `start_auto` enters a line-control mode, and exits when the state returns to tuning, idle, remote bridge, or fault. The start path must reserve a `STARTING` state before `xTaskCreate()` so concurrent BLE/Wi-Fi requests cannot create duplicate controller tasks. Disabled and idle line-trace states must not send periodic `chassis_uart_stop()`; only explicit stop, disconnect, manual-test timeout, or fault handling may send a one-shot zero-speed frame.
 
 Future features must follow `docs/vehicle-feature-mode-maintenance.md` before touching chassis UART ownership. A new feature must define its goal, inputs, outputs, independent test, failure rules, and integration boundary before it is wired into shared motion output.
 
@@ -135,7 +135,6 @@ Line-following quality is mainly affected by:
 ## Required Peripherals
 
 - USB-C serial connection for flashing, logs, and recovery.
-- USB-C is still the first-install and recovery path. OTA can update the app image only after an OTA-capable firmware and partition table have already been flashed once over USB.
 - Chassis serial link: ESP TX/RX to the car chassis serial command interface.
 - Eight-channel infrared line sensor serial link: ESP RX/TX to the VGTI/UART interface.
 - Common ground between ESP32 board, chassis controller, and sensor module.
@@ -194,9 +193,9 @@ The installation includes both `esp32s3` and `esp32c3` target toolchains. The pr
 
 Current ESP32-S3 build verification passes and generates `build/DCar-Liner.bin`.
 
-The firmware now uses a custom 4 MB OTA partition table, `partitions_ota_4mb.csv`, for both S3 and C3 builds. Each OTA app slot is `0x1D0000` bytes. This replaces the earlier large single-app layout so wireless firmware updates can switch between `ota_0` and `ota_1`.
+The firmware uses a custom 4 MB single-app partition table, `partitions_single_4mb.csv`, for both S3 and C3 builds. There is one `factory` app slot (`0x3B0000`); over-the-air (OTA) update has been removed, so firmware is updated only by USB or web-serial flashing.
 
-When a board is still running the older single-app firmware, flash once over USB so the bootloader sees the new partition table:
+After changing the partition table, flash once over USB so the bootloader sees the new layout:
 
 ```sh
 ./scripts/idf.sh -B build-esp32c3 -DSDKCONFIG=sdkconfig.esp32c3 -p /dev/cu.usbmodem11201 flash
@@ -225,8 +224,6 @@ HTTP endpoints:
 - `GET /api/scheme`: compatibility alias for `/api/schema`.
 - `GET /api/params`: current parameter values.
 - `GET /api/telemetry`: current line sensor state, line UART diagnostics, motion command, controller state, and parameter version.
-- `GET /api/ota/status`: running, boot, and next OTA partition metadata.
-- `POST /api/ota`: binary firmware upload endpoint. Send the raw `.bin` image body with `Content-Type: application/octet-stream`.
 
 The root debug page at `http://192.168.4.1/` is only a fallback diagnostic page with static links to the API endpoints. The normal tuning UI is the WeChat mini program over compact BLE frames; Wi-Fi remains a maintenance and fallback diagnostics channel.
 
@@ -338,7 +335,7 @@ WebSocket messages:
 
 Read-only debug messages are allowed while the vehicle is idle or running. Mutating parameter messages use the stop-to-tune policy: `set_param`, `save_params`, and `reset_defaults` are accepted only after `enter_tuning` has moved the vehicle into `PARAM_TUNING`. `save_params` writes the current values to NVS. Do not save on every slider movement.
 
-BLE compact `S<kp>,<ki>,<kd>,<gear>` also enters tuning briefly, validates the four phone-facing values, saves them to NVS, exits tuning, and returns `OK` or an error. It does not use OTA partitions and does not rewrite firmware.
+BLE compact `S<kp>,<ki>,<kd>,<gear>` also enters tuning briefly, validates the four phone-facing values, saves them to NVS, exits tuning, and returns `OK` or an error. It does not rewrite firmware.
 
 Vehicle motion states:
 
@@ -348,43 +345,9 @@ Vehicle motion states:
 - `MANUAL_TEST`: short, low-speed manual chassis test from the tuning session.
 - `AUTO_ARMED`: auto line tracing is prepared but still stopped.
 - `AUTO_RUNNING`: closed-loop line tracing is allowed to send motion commands.
-- `OTA_UPDATE`: maintenance update is writing a new firmware image; chassis is stopped, tuning writes are rejected, and the controller pauses line-sensor reads.
-- `FAULT`: chassis send failure, OTA failure, or invalid safety state; clear explicitly with `clear_fault`. Normal line loss is handled by the search phase, not by entering `FAULT`.
+- `FAULT`: chassis send failure or invalid safety state; clear explicitly with `clear_fault`. Normal line loss is handled by the search phase, not by entering `FAULT`.
 
 `manual_motion` accepts either `motion` as `forward`, `backward`, `left`, `right`, or `stop`, or numeric `linear_mm_s` and `angular_mdeg_s`. Manual commands are limited to `1500 mm/s`, `10000 mdeg/cmd`, and `50-3000 ms`; the linear value is sent as the DFLink protocol speed value, and the Z value is a per-command angle increment. Protocol `Vx=0.5` is a measured comfortable manual-test speed, while automatic line tracing currently tops out at `Vx=1.0`.
-
-## Wireless Firmware OTA
-
-OTA is a maintenance operation, not the phone-side tuning path. It uses the Wi-Fi fallback server and the 4 MB OTA partition table. It is compatible with the vehicle state model because the upload handler forces `OTA_UPDATE`, sends a chassis stop, rejects tuning writes, and restarts only after the new image has been fully written and selected as the next boot partition.
-
-Module definition:
-
-- `Goal`: update the ESP32 app image without a USB cable after the OTA-capable firmware is installed once.
-- `Inputs`: raw `DCar-Liner.bin` over `POST /api/ota` after the operator starts Wi-Fi with BLE `W1` and connects the computer to the ESP32 SoftAP.
-- `Outputs`: the image is written to the inactive OTA slot, `esp_ota_set_boot_partition()` selects it, and the board reboots after a short response window.
-- `Independent Test`: `GET /api/ota/status`, then upload `build-esp32c3/DCar-Liner.bin` with `tools/ota_upload.py`, then reconnect and confirm BLE/HTTP still reports `DCar-Liner`.
-- `Failure Rules`: oversized images are rejected before writing; invalid images or receive/write failures enter `FAULT` with `OTA_FAILED`; USB flashing remains the recovery path.
-- `Next Integration Boundary`: add an operator UI button only after the manual script path is stable.
-
-Computer-side upload command after the computer is connected to `DCar-Liner-XXXXXX` Wi-Fi:
-
-```sh
-python3 tools/ota_upload.py build-esp32c3/DCar-Liner.bin
-```
-
-If macOS or a VPN routes `192.168.4.1` through another interface, bind the upload to the Wi-Fi source IP assigned by the ESP32 SoftAP:
-
-```sh
-python3 tools/ota_upload.py --source-ip 192.168.4.2 build-esp32c3/DCar-Liner.bin
-```
-
-For ESP32-S3, use:
-
-```sh
-python3 tools/ota_upload.py build/DCar-Liner.bin
-```
-
-Each upload writes `logs/ota-upload-tests/<timestamp>/summary.md` unless `--no-log` is passed.
 
 ## Computer-Side State Machine Test Tool
 

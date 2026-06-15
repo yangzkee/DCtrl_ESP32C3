@@ -19,7 +19,7 @@
 
     <h2>需要连接的外设</h2>
     <ul>
-      <li>USB-C 串口：用于首次烧录、日志和恢复；启用 OTA 前也必须先通过 USB 写入一次 OTA 分区表。</li>
+      <li>USB-C 串口：用于首次烧录、日志和恢复。</li>
       <li>底盘串口：ESP32 向底盘发送速度和转向指令。</li>
       <li>八路红外循线模块串口：ESP32 读取循线状态。</li>
       <li>共地连接：ESP32、底盘控制器、循线模块必须共地。</li>
@@ -50,8 +50,7 @@
     <p>DHelper 小程序的循线控制面板使用 BLE JSON 命令：先点 <code>一键自检</code>，小程序依次读取 telemetry、必要时清除故障、执行 <code>arm_auto</code>，三步全部通过并进入 <code>AUTO_ARMED</code> 后才会点亮 <code>开始循线</code>。点击 <code>开始循线</code> 后发送 <code>start_auto</code>，车端进入 <code>AUTO_RUNNING</code>；面板中的 <code>停止</code> 会发送 <code>stop</code>。小程序源码已迁至 DHelper 小程序仓库，本仓库只保留车端协议和固件实现。</p>
     <p>正式固件已经合入底盘诊断能力，不再需要单独维护临时探针固件。C3 当前底盘口为 <code>TX GPIO4 / RX GPIO5 / 115200</code>，接线仍然是 ESP32 的 TX 接底盘 RX、ESP32 的 RX 接底盘 TX。电脑端 BLE 工具可以发送 <code>C?</code> 查看底盘口配置，发送 <code>Crepeat</code> 连续查询 DFLink ready/version/params 并检查校验和，发送 <code>Cxyz</code> 测试一帧原始 <code>Vx/Vy/Vz</code> 速度指令，发送 <code>Cxyzrx</code> 在速度指令后立刻等待底盘回传，发送 <code>Cxyz500rx</code> 测试 DFLink 协议值 <code>Vx=0.5</code> 的线速度命令并读取回传，发送 <code>Cxyz0</code> 或 <code>Cstop0</code> 发零速帧。<code>Vx=0.5</code> 是已验证的手动/诊断速度；当前自动循线最高档为 <code>Vx=1.0</code>。线速度标定比例 <code>协议值:真实速度 = 10:1</code> 只用于后续估算真实速度，不会在发送前缩放协议值。</p>
     <p>Wi-Fi 热点默认关闭，以降低功耗。需要后备诊断或无线烧录时，可通过 BLE 发送 <code>W1</code> 启动名为 <code>DCar-Liner-XXXXXX</code> 的 Wi-Fi 热点，默认密码为 <code>DCar-Liner123</code>。电脑手动连接该热点后，可以访问 ESP32 的 HTTP 和 WebSocket 接口读取完整参数表、查看遥测状态，并执行 JSON 调试命令。</p>
-    <p>无线烧录和小程序调参是两条独立路径：小程序 BLE 只收发 <code>Kp/Ki/Kd/速度档位</code> 并保存到 NVS，不改固件、不碰 OTA 分区；无线烧录走 Wi-Fi 的 <code>/api/ota</code>，会让车端进入 <code>OTA_UPDATE</code>、强制停车、写入另一个 OTA app 槽并重启。第一次启用 OTA 时仍要用 USB 烧一次正式固件，因为分区表也需要更新。</p>
-    <p>电脑端无线烧录工具为 <code>tools/ota_upload.py</code>。电脑连上 ESP32 热点后运行 <code>python3 tools/ota_upload.py build-esp32c3/DCar-Liner.bin</code>；如果本机 VPN 或系统路由抢走 <code>192.168.4.1</code>，先确认 ESP32 给电脑分配的 Wi-Fi 地址，例如 <code>192.168.4.2</code>，再加 <code>--source-ip 192.168.4.2</code>。</p>
+    <p>小程序调参走 BLE，只收发 <code>Kp/Ki/Kd/速度档位</code> 并保存到 NVS，不改固件；Wi-Fi 后备仅用于诊断（读取参数表、查看遥测、执行 JSON 调试命令）。无线 OTA 升级已移除，固件只能通过 USB 或网页串口烧录更新。</p>
     <p>电脑端 BLE 自动测试工具位于 <code>tools/ble_debug_tester.swift</code>。运行后会自动扫描、连接、发送指定命令、读取响应，并把日志写入 <code>logs/ble-debug-tests/</code>。较长 JSON 遥测响应仍会通过 <code>ble_chunk</code> 分包返回，电脑端工具会拼包后解析。</p>
     <p><code>http://192.168.4.1/</code> 只是 ESP32 上的备用诊断入口，页面只提供静态 API 链接。主调参入口是 DHelper 小程序 BLE 参数面板。</p>
     <p>调试接口的精确地址是 <code>/api/health</code>、<code>/api/schema</code>、<code>/api/params</code> 和 <code>/api/telemetry</code>。如果手误输入 <code>/api/scheme</code>，当前固件也会兼容返回参数表。建议现场先连续打开几次 <code>/api/health</code>，确认 HTTP 服务和内存余量稳定，再打开更大的参数表和遥测接口。</p>
@@ -64,7 +63,7 @@
     <p>DHelper 小程序 <code>line-tuning</code> 的短帧发送会一次性写入并保存 <code>Kp/Ki/Kd/速度档位</code> 四个值。JSON 调试接口仍保持停车调参规则，<code>save_params</code> 执行时才写入 NVS，避免高频调参损耗 flash。</p>
 
     <h2>当前开发环境</h2>
-    <p>本机已经安装 ESP-IDF <code>v5.5.4</code>，路径为 <code>/Users/schwartz/esp/esp-idf</code>，并安装了 ESP32-S3 与 ESP32-C3 两套目标工具链。当前工程使用 <code>partitions_ota_4mb.csv</code> 自定义 4MB 双 OTA 分区布局，固件产物为 <code>build/DCar-Liner.bin</code> 或 <code>build-esp32c3/DCar-Liner.bin</code>。</p>
+    <p>本机已经安装 ESP-IDF <code>v5.5.4</code>，路径为 <code>/Users/schwartz/esp/esp-idf</code>，并安装了 ESP32-S3 与 ESP32-C3 两套目标工具链。当前工程使用 <code>partitions_single_4mb.csv</code> 自定义 4MB 单 app 分区布局（已移除 OTA），固件产物为 <code>build/DCar-Liner.bin</code> 或 <code>build-esp32c3/DCar-Liner.bin</code>。</p>
     <p>ESP32-C3 迁移烟测也已经通过，使用独立配置 <code>sdkconfig.esp32c3</code> 和独立构建目录 <code>build-esp32c3/</code>，不会覆盖当前 S3 配置。</p>
     <p>后续开发可在工程根目录使用 <code>./scripts/idf.sh build</code> 编译，使用 <code>./scripts/idf.sh -p /dev/cu.usbserial-1120 flash monitor</code> 烧录和查看日志。</p>
   </main>

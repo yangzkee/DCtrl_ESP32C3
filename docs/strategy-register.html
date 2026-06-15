@@ -247,7 +247,7 @@
   <main>
     <section class="notice">
       <strong>登记规则：</strong>
-      策略不是临时参数。任何影响小车行为、无线调试、安全停车、传感器解释、速度/转向映射、小程序控制流程或 OTA 维护流程的决定，都必须在本页留下编号、触发条件、当前实现和验证方法。
+      策略不是临时参数。任何影响小车行为、无线调试、安全停车、传感器解释、速度/转向映射或小程序控制流程的决定，都必须在本页留下编号、触发条件、当前实现和验证方法。
     </section>
 
     <h2>目录</h2>
@@ -261,7 +261,7 @@
       <li><a href="#S07">S07 运动状态机</a></li>
       <li><a href="#S08">S08 停车调参</a></li>
       <li><a href="#S09">S09 BLE 优先调试</a></li>
-      <li><a href="#S10">S10 Wi-Fi 后备与 OTA</a></li>
+      <li><a href="#S10">S10 Wi-Fi 后备诊断</a></li>
       <li><a href="#S11">S11 小程序最小参数面板</a></li>
       <li><a href="#S12">S12 小程序循线控制流程</a></li>
       <li><a href="#S13">S13 自动循线速度档位</a></li>
@@ -349,8 +349,8 @@
       <h3 class="strategy-title"><span class="sid">S07</span>运动状态机</h3>
       <span class="tag safety">安全</span><span class="tag motion">状态</span>
       <table>
-        <tr><th>策略</th><td>车端主运动状态包括 <code>BOOT_INIT</code>、<code>SAFE_IDLE</code>、<code>REMOTE_BRIDGE</code>、<code>PARAM_TUNING</code>、<code>MANUAL_TEST</code>、<code>AUTO_ARMED</code>、<code>AUTO_RUNNING</code>、<code>OTA_UPDATE</code>、<code>FAULT</code>。底盘 UART 只能由当前 active mode 写入。</td></tr>
-        <tr><th>触发条件</th><td>调参、手动测试、自动准备、自动运行、故障和 OTA 必须通过状态转换控制。</td></tr>
+        <tr><th>策略</th><td>车端主运动状态包括 <code>BOOT_INIT</code>、<code>SAFE_IDLE</code>、<code>REMOTE_BRIDGE</code>、<code>PARAM_TUNING</code>、<code>MANUAL_TEST</code>、<code>AUTO_ARMED</code>、<code>AUTO_RUNNING</code>、<code>FAULT</code>。底盘 UART 只能由当前 active mode 写入。</td></tr>
+        <tr><th>触发条件</th><td>调参、手动测试、自动准备、自动运行和故障必须通过状态转换控制。</td></tr>
         <tr><th>实现位置</th><td><code>components/vehicle_state/vehicle_state.c</code></td></tr>
         <tr><th>验证方法</th><td>通过 BLE JSON 发送 <code>arm_auto</code>、<code>start_auto</code>、<code>stop</code>，观察 telemetry 的 <code>vehicle.motion_state</code>。</td></tr>
       </table>
@@ -379,13 +379,13 @@
     </article>
 
     <article class="strategy" id="S10">
-      <h3 class="strategy-title"><span class="sid">S10</span>Wi-Fi 后备与 OTA</h3>
+      <h3 class="strategy-title"><span class="sid">S10</span>Wi-Fi 后备诊断</h3>
       <span class="tag debug">维护</span><span class="tag safety">安全</span>
       <table>
-        <tr><th>策略</th><td>Wi-Fi SoftAP 只作为后备诊断和无线烧录入口。通过 BLE <code>W1</code> 手动开启。OTA 进入维护状态、强制停车、写入另一个 OTA app 槽并重启。</td></tr>
-        <tr><th>边界</th><td>小程序改 PID/速度档只写 NVS，不碰 OTA 分区；OTA 是固件维护流程。</td></tr>
-        <tr><th>实现位置</th><td><code>components/debug_server</code>、<code>tools/ota_upload.py</code>、<code>partitions_ota_4mb.csv</code></td></tr>
-        <tr><th>验证方法</th><td>BLE 发送 <code>W1</code>，电脑连接热点后访问 <code>/api/ota/status</code>。</td></tr>
+        <tr><th>策略</th><td>Wi-Fi SoftAP 只作为后备诊断入口，通过 BLE <code>W1</code> 手动开启，提供只读参数表、遥测和 JSON 调试命令。</td></tr>
+        <tr><th>边界</th><td>小程序改 PID/速度档只写 NVS；无线 OTA 升级已移除，固件只能通过 USB 或网页串口烧录更新。</td></tr>
+        <tr><th>实现位置</th><td><code>components/debug_server</code></td></tr>
+        <tr><th>验证方法</th><td>BLE 发送 <code>W1</code>，电脑连接热点后访问 <code>/api/telemetry</code>。</td></tr>
       </table>
     </article>
 
