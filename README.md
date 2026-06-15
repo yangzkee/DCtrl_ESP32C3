@@ -1,56 +1,56 @@
-# ESP32-S3/C3 Line Trace Car Firmware
+# ESP32-S3/C3 循线小车固件
 
-This project controls a serial-command car chassis and reads an eight-channel infrared line sensor over VGTI/UART.
+本项目通过串口指令控制小车底盘，并通过 VGTI/UART 读取八路红外循线传感器。
 
-## What To Configure
+## 需要配置什么
 
-### Hardware
+### 硬件
 
-- ESP32-S3 board for the first bring-up.
-- USB-C serial path for flashing, logging, and recovery.
-- One UART link from ESP32-S3 to the car chassis command port.
-- One UART link from ESP32-S3 to the eight-channel infrared line sensor VGTI/UART port.
-- Common GND across ESP32, chassis controller, and sensor module.
-- 3.3 V UART logic, or level shifters when a peripheral uses 5 V logic.
-- Stable power isolation so motor power noise does not reset the ESP32 board.
-- Wi-Fi SoftAP debug channel for wireless parameter tuning.
-- Reserved BLE debug transport boundary for later close-range tuning.
+- 首次调试使用 ESP32-S3 开发板。
+- USB-C 串口用于烧录、日志和恢复。
+- 一路 UART：ESP32-S3 → 小车底盘指令口。
+- 一路 UART：ESP32-S3 → 八路红外循线传感器 VGTI/UART 口。
+- ESP32、底盘控制器、传感器模块必须共地。
+- UART 逻辑电平为 3.3V；外设若使用 5V 逻辑需加电平转换。
+- 电源做好隔离，避免电机电源噪声复位 ESP32 开发板。
+- Wi-Fi SoftAP 调试通道用于无线参数调试。
+- 预留 BLE 调试传输边界，供后续近距离调参使用。
 
-### Default ESP32-S3 Wiring
+### ESP32-S3 默认接线
 
-| Role | UART | ESP TX | ESP RX | Baud |
+| 用途 | UART | ESP TX | ESP RX | 波特率 |
 | --- | --- | --- | --- | --- |
-| Chassis command serial | UART1 | GPIO17 | GPIO18 | 115200 |
-| Eight-channel line sensor | UART2 | GPIO15 | GPIO16 | 115200 |
+| 底盘指令串口 | UART1 | GPIO17 | GPIO18 | 115200 |
+| 八路循线传感器 | UART2 | GPIO15 | GPIO16 | 115200 |
 
-### ESP32-C3 Migration
+### 迁移到 ESP32-C3
 
-All chip-specific UART and GPIO choices live in `components/board/board_profile.c`.
+所有与芯片相关的 UART 和 GPIO 选择都集中在 `components/board/board_profile.c`。
 
-The control, chassis, and sensor modules must keep using `board_profile_t` instead of hardcoded pins. If the final ESP32-C3 board cannot expose two independent UART links cleanly, change only the board profile or add an external UART bridge profile.
+控制、底盘、传感器模块必须继续使用 `board_profile_t`，不要硬编码引脚。如果最终的 ESP32-C3 板无法干净地引出两路独立 UART，只需修改板级配置（board profile），或新增一个外部 UART 桥接配置。
 
-## Current Protocols
+## 当前协议
 
-- Chassis output uses DFLink `Motion_Velocity`: frame head `0xDF`, target `0x01`, source `0x97`, A=`0x02`, B=`0x62`, LEN=`12`, payload `Vx,Vy,Vz` as fixed-point F32.
-- Line sensor input uses USART digital mode. The firmware sends `$0,0,1#` and parses `$D,x1:0,...,x8:0#`.
+- 底盘输出使用 DFLink `Motion_Velocity`：帧头 `0xDF`、目标 `0x01`、源 `0x97`、A=`0x02`、B=`0x62`、LEN=`12`，载荷 `Vx,Vy,Vz` 为定点 F32。
+- 循线传感器输入使用 USART 数字模式。固件发送 `$0,0,1#`，并解析 `$D,x1:0,...,x8:0#`。
 
-Protocol reference files are preserved under `references/protocols/`.
+协议参考文件保存在 `references/protocols/`。
 
-For the eight-channel line sensor, USART digital mode is the first implementation choice. It needs only two pins, has a complete known protocol from the screenshot, and stays compatible with ESP32-C3 migration. IO direct read costs eight GPIOs. I2C remains a future option after its address/register protocol is confirmed.
+八路循线传感器优先采用 USART 数字模式：只需两个引脚、协议完整已知、且兼容 ESP32-C3 迁移。IO 直接读取需要八个 GPIO；I2C 在确认其地址/寄存器协议后可作为未来选项。
 
-## Wireless Debug Scaffold
+## 无线调试脚手架
 
-The firmware advertises BLE as `DCtrl`. The optional Wi-Fi fallback still starts a SoftAP named `DCar-Liner-XXXXXX` with password `DCar-Liner123`.
+固件以 `DCtrl` 名称进行 BLE 广播。可选的 Wi-Fi 后备仍会启动名为 `DCar-Liner-XXXXXX`、密码 `DCar-Liner123` 的 SoftAP。
 
-After connecting the computer to that hotspot:
+电脑连接该热点后：
 
-- Open `http://192.168.4.1/` for a minimal debug landing page.
-- Read parameter schema from `http://192.168.4.1/api/schema`.
-- Read current parameters from `http://192.168.4.1/api/params`.
-- Read current telemetry from `http://192.168.4.1/api/telemetry`.
-- Use WebSocket `ws://192.168.4.1/ws` for live tuning.
+- 打开 `http://192.168.4.1/` 查看精简调试首页。
+- 从 `http://192.168.4.1/api/schema` 读取参数定义。
+- 从 `http://192.168.4.1/api/params` 读取当前参数。
+- 从 `http://192.168.4.1/api/telemetry` 读取当前遥测。
+- 使用 WebSocket `ws://192.168.4.1/ws` 进行实时调参。
 
-Example WebSocket messages:
+WebSocket 消息示例：
 
 ```json
 {"type":"get_schema"}
@@ -64,4 +64,4 @@ Example WebSocket messages:
 {"type":"save_params"}
 ```
 
-Live updates change RAM immediately. Flash persistence happens only after `save_params`.
+实时更新会立即改变 RAM；只有在 `save_params` 之后才会写入 Flash 持久化。

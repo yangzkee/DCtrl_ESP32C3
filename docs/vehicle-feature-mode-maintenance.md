@@ -1,48 +1,47 @@
-# Vehicle Feature Mode Maintenance
+# 车辆功能模式维护
 
 更新时间：2026-06-14
 
-## Current Truth
+## 当前事实
 
-ESP32-C3 exposes one BLE name, `DCtrl`. The remote-control service is a transparent serial bridge: the mini program writes DFLink chassis bytes, and the firmware forwards those bytes to the chassis UART without motion parsing, target caching, unit conversion, local feed scheduling, or success ACKs on the high-rate path. Remote bridge success is silent; only `E:*` errors notify the client.
+ESP32-C3 只暴露一个 BLE 名称 `DCtrl`。遥控服务是一个透传串口桥：小程序写入 DFLink 底盘字节，固件把这些字节原样转发到底盘 UART，不做运动解析、不缓存目标、不做单位转换、不在高频路径上做本地喂帧或成功 ACK。遥控桥成功时保持静默；只有 `E:*` 错误才通知客户端。
 
-The remote bridge may update low-cost telemetry counters for diagnosis. These counters are observation only: write counts, forwarded bytes, current-session last/max write gaps, and error totals must never drive motion decisions, smoothing, watchdogs, or ACK behavior. A remote telemetry session starts on the first remote write and ends on BLE disconnect or after more than 3000 ms of no remote writes before the next write.
+遥控桥可以更新低开销的遥测计数器用于诊断。这些计数器只用于观测：写入次数、转发字节数、当前会话的最近/最大写入间隔、错误总数，绝不能用来驱动运动决策、平滑、看门狗或 ACK 行为。一个遥控遥测会话从第一帧遥控写入开始，到 BLE 断连、或下一帧写入前超过 3000 ms 无写入时结束。
 
-The shared vehicle coordinate truth is fixed at the DFLink command boundary: `X > 0` means forward, `Y > 0` means left translation, and `Z/Yaw > 0` means left/counterclockwise rotation. The mini program owns input mapping into this coordinate frame; the ESP32-C3 bridge must forward the resulting bytes unchanged.
+共享的车辆坐标约定固定在 DFLink 命令边界：`X > 0` 表示前进，`Y > 0` 表示向左平移，`Z/Yaw > 0` 表示向左/逆时针旋转。小程序负责把输入映射到该坐标系；ESP32-C3 桥必须原样转发结果字节。
 
-Line tracing, line tuning, OTA, diagnostics, and remote bridge features share the same physical chassis UART. Only the active vehicle mode may write motion bytes. Inactive features must not poll sensors, run PID, feed cached motion, or send periodic stop frames.
+循线、循线调参、诊断和遥控桥共用同一条物理底盘 UART。只有当前激活的车辆模式才能写运动字节。未激活的功能不得轮询传感器、运行 PID、喂缓存运动或发送周期性停车帧。
 
-## Active Modes
+## 激活模式
 
-- `SAFE_IDLE`: no feature owns motion output.
-- `REMOTE_BRIDGE`: DCtrl remote bridge owns raw chassis UART forwarding.
-- `PARAM_TUNING`: line-tuning parameter edits are allowed; normal line control is not running.
-- `MANUAL_TEST`: tuning manual-test command owns the line controller briefly.
-- `AUTO_ARMED` / `AUTO_RUNNING`: line-trace controller owns sensor reads and chassis motion.
-- `OTA_UPDATE`: firmware update owns the device and forces a one-shot stop before writing flash.
-- `FAULT`: motion output is disabled until explicitly cleared.
+- `SAFE_IDLE`：没有任何功能占用运动输出。
+- `REMOTE_BRIDGE`：DCtrl 遥控桥占用底盘 UART 原始转发。
+- `PARAM_TUNING`：允许循线参数编辑；常规循线控制未运行。
+- `MANUAL_TEST`：调参手动测试命令短暂占用循线控制器。
+- `AUTO_ARMED` / `AUTO_RUNNING`：循线控制器占用传感器读取和底盘运动。
+- `FAULT`：运动输出被禁用，直到被显式清除。
 
-## Rules For Future Work
+## 后续开发规则
 
-- Do not start `line_trace_controller` from `app_main`; start it only from a state transition that enters manual test or automatic line tracing.
-- Do not create `line_trace_controller` tasks without first reserving startup ownership. The controller start path must keep a `STARTING` state or equivalent in the critical section so concurrent BLE/Wi-Fi requests cannot create duplicate tasks.
-- Do not send periodic `chassis_uart_stop()` from disabled, idle, tuning, remote, OTA, or fault states. One-shot stops are allowed only on explicit stop, disconnect, manual-test timeout, OTA entry, or fault handling.
-- Do not add a second remote-motion protocol. Remote control must reuse the mini program DFLink encoder and firmware raw UART bridge.
-- Do not restore `REMOTE_V1`, 13-byte DCtrl semantic motion frames, remote target caches, watchdog-fed local motion loops, or ESP32-side speed/yaw conversion.
-- Do not make remote bridge success noisy again. `OK` notifications on every forwarded BLE write are forbidden because they compete with the high-rate control path; only error notifications are allowed.
-- Do not remove `remote_bridge` telemetry from `get_telemetry`; it is the field diagnostic path for proving whether BLE writes reached ESP32-C3 during stutter reports. `remote_bridge.max_gap_ms` is session-scoped, so idle time between separate tests must not pollute the value.
-- Do not let partial BLE debug RX streams survive a connection boundary. Clear the compact/JSON stream buffer on connect and disconnect so a truncated command from one session cannot become a prefix for the next command.
-- Do not smooth DCtrl remote rotation inside ESP32-C3. The mini program owns the business-level `Vz deg/cmd` profile and must encode it to DFLink wire-level `rad/cmd`; the bridge still forwards bytes unchanged.
-- Do not invert, reinterpret, or special-case the shared coordinate signs inside the remote bridge. Remote DFLink bytes already use `X > 0` forward, `Y > 0` left, and `Z/Yaw > 0` left/counterclockwise.
-- Do not reintroduce `WHEELTEC` as a runtime device name, scan compatibility path, priority match, service alias, code module, UI copy, or test fixture.
-- Do not reintroduce editable BLE names. `N` reads `DCtrl`, `N=*` clears old custom-name storage and restores/confirms `DCtrl`, and `N=<name>` is disabled.
-- Do not write `chassis_uart_send_motion()`, `chassis_uart_stop()`, or `chassis_uart_write_raw()` from a new feature until that feature has an explicit vehicle mode and documented ownership boundary.
-- When adding a feature, document its goal, inputs, outputs, independent test, failure rules, and next integration boundary before wiring it into shared UART control.
+- 不要从 `app_main` 启动 `line_trace_controller`；只能从进入手动测试或自动循线的状态转换中启动。
+- 创建 `line_trace_controller` 任务前必须先预留启动所有权。控制器启动路径必须在临界区里保留一个 `STARTING` 状态或等价机制，使并发的 BLE/Wi-Fi 请求不会创建重复任务。
+- 不要从禁用、空闲、调参、遥控或故障状态发送周期性 `chassis_uart_stop()`。只有在显式停车、断连、手动测试超时或故障处理时才允许发送一次性停车。
+- 不要新增第二套遥控运动协议。遥控必须复用小程序的 DFLink 编码器和固件的原始 UART 桥。
+- 不要恢复 `REMOTE_V1`、13 字节 DCtrl 语义运动帧、遥控目标缓存、看门狗喂帧的本地运动环，或 ESP32 端的速度/偏航转换。
+- 不要让遥控桥成功路径重新变得“吵闹”。禁止对每帧转发的 BLE 写入回 `OK` 通知，因为它会与高频控制路径争抢；只允许错误通知。
+- 不要从 `get_telemetry` 移除 `remote_bridge` 遥测；它是现场诊断路径，用于证明卡顿上报期间 BLE 写入是否到达 ESP32-C3。`remote_bridge.max_gap_ms` 是会话级的，所以测试之间的空闲时间不能污染该值。
+- 不要让残留的 BLE 调试 RX 流跨越连接边界。在连接和断开时清空紧凑/JSON 流缓冲，使一次会话里被截断的命令不会成为下一条命令的前缀。
+- 不要在 ESP32-C3 内部平滑 DCtrl 遥控旋转。小程序拥有业务层 `Vz deg/cmd` 档位，并必须把它编码为 DFLink 线缆层 `rad/cmd`；桥依然原样转发字节。
+- 不要在遥控桥内部反转、重新解释或特殊处理共享坐标符号。遥控 DFLink 字节已使用 `X > 0` 前进、`Y > 0` 左、`Z/Yaw > 0` 左/逆时针。
+- 不要把 `WHEELTEC` 重新作为运行时设备名、扫描兼容路径、优先匹配、服务别名、代码模块、UI 文案或测试夹具。
+- 不要重新引入可编辑的 BLE 名称。`N` 读取 `DCtrl`，`N=*` 清除旧自定义名存储并恢复/确认 `DCtrl`，`N=<name>` 已禁用。
+- 在一个新功能拥有明确的车辆模式和文档化的所有权边界之前，不要从该功能里调用 `chassis_uart_send_motion()`、`chassis_uart_stop()` 或 `chassis_uart_write_raw()`。
+- 新增功能时，在接入共享 UART 控制之前，先记录它的目标、输入、输出、独立测试、失败规则和下一个集成边界。
 
-## Required Checks
+## 必做检查
 
-- Mini program: `npm run check` and `npm test` from `miniapp/dcar-ble-remote`.
-- Firmware static boundary check: `python3 tools/check_feature_boundaries.py`.
-- Firmware build: `./scripts/idf.sh -B build-esp32c3 -DSDKCONFIG=sdkconfig.esp32c3 build`.
-- Remote smoke tester: `swift tools/ble_remote_tester.swift --timeout 25 --motion zero` and `--motion yaw`; this tool must send raw 21-byte DFLink `Motion_Velocity` frames, not the retired 13-byte remote semantic frame.
-- Hardware smoke test after flashing: connect to BLE `DCtrl`, confirm remote movement, release zero-speed, disconnect zero-speed, then separately verify line-tuning and line-trace entry still work.
+- 小程序：在 `miniapp/dcar-ble-remote` 下执行 `npm run check` 和 `npm test`。
+- 固件静态边界检查：`python3 tools/check_feature_boundaries.py`。
+- 固件构建：`./scripts/idf.sh -B build-esp32c3 -DSDKCONFIG=sdkconfig.esp32c3 build`。
+- 遥控烟雾测试：`swift tools/ble_remote_tester.swift --timeout 25 --motion zero` 和 `--motion yaw`；该工具必须发送原始 21 字节 DFLink `Motion_Velocity` 帧，而不是已废弃的 13 字节遥控语义帧。
+- 烧录后硬件烟雾测试：连接 BLE `DCtrl`，确认遥控移动、松手零速、断连零速，然后单独验证循线调参和循线进入仍正常。
