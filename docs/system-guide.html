@@ -14,7 +14,7 @@
 <body>
   <main>
     <h1>ESP32 循线小车固件说明</h1>
-    <p>当前工程面向 ESP32-S3，控制一个通过串口接收运动指令的小车底盘，并读取一个通过 VGTI/UART 通信的八路红外循线模块。工程结构已经按 ESP32-C3 迁移做了分层，后续更换芯片时优先调整板级配置，不改控制逻辑。</p>
+    <p>当前工程面向 ESP32-C3，控制一个通过串口接收运动指令的小车底盘，并读取一个通过 VGTI/UART 通信的八路红外循线模块。工程结构已经把目标芯片差异集中在板级配置中，调整接线时优先改板级配置，不改控制逻辑。</p>
     <p>所有已经确认的运动、通信、安全、调参和小程序策略统一登记在 <a href="strategy-register.html">DCar-Liner 策略登记表</a>。车端状态机与运动分层图见 <a href="vehicle-line-state-machine.html">DCar-Liner 状态机说明</a>。新增或修改策略时，优先更新这些网页。</p>
 
     <h2>需要连接的外设</h2>
@@ -28,9 +28,8 @@
       <li>无线调试通道：BLE 默认开启，用于 DHelper 小程序收发 PID 和速度档位；Wi-Fi 热点只作为按需开启的后备诊断和无线烧录入口。</li>
     </ul>
 
-    <h2>当前默认接线</h2>
-    <p>ESP32-S3 默认使用两个独立 UART：底盘为 <code>UART1 GPIO17/GPIO18</code>，循线模块为 <code>UART2 GPIO15/GPIO16</code>。这些是工程默认值，最终应按实际开发板原理图确认后固化。</p>
-    <p>ESP32-C3 当前 profile 为：底盘 <code>UART1 TX GPIO4 / RX GPIO5</code>，循线模块 <code>UART0 TX GPIO2 / RX GPIO3</code>。接线时交叉连接：ESP 的 TX 接外设 RX，ESP 的 RX 接外设 TX，并且必须共地。也就是底盘接 <code>GPIO4 -> 底盘RX</code>、<code>GPIO5 &lt;- 底盘TX</code>；循线模块接 <code>GPIO2 -> 模块RX</code>、<code>GPIO3 &lt;- 模块TX</code>。C3 控制台走 USB Serial/JTAG，<code>UART0</code> 保留给循线模块；如后续仍需换脚，只改 C3 板级 profile，不改业务模块。</p>
+    <h2>当前接线</h2>
+    <p>ESP32-C3 当前 profile 为：底盘 <code>UART1 TX GPIO4 / RX GPIO5</code>，循线模块 <code>UART0 TX GPIO2 / RX GPIO3</code>，均为 <code>115200 8N1</code>。接线时交叉连接：ESP 的 TX 接外设 RX，ESP 的 RX 接外设 TX，并且必须共地。也就是底盘接 <code>GPIO4 -> 底盘RX</code>、<code>GPIO5 &lt;- 底盘TX</code>；循线模块接 <code>GPIO2 -> 模块RX</code>、<code>GPIO3 &lt;- 模块TX</code>。C3 控制台走 USB Serial/JTAG，<code>UART0</code> 保留给循线模块；如后续仍需换脚，只改 C3 板级 profile，不改业务模块。</p>
 
     <h2>当前巡线目标</h2>
     <p>本阶段地图只是一圈贴在地上的黑胶带。不规则来自手工贴胶带的自然误差，不是迷宫，也不是分岔路线。固件当前只做圆环巡线：等待启动、跟住线、丢线后线速度归零并用扩幅摆扫找线。迷宫、岔路识别、路线记忆和选路暂不进入主运动策略。</p>
@@ -38,10 +37,10 @@
 
     <h2>当前协议选择</h2>
     <p>底盘串口采用 DFLink <code>Motion_Velocity</code> 指令，固件按固定循环频率持续发送 <code>Vx</code> 和 <code>Vz</code>。当前底盘语义中，<code>Vx</code> 是协议线速度值，<code>Vz</code> 是每条速度指令的角度增量，不是持续保持的角速度；正常循线和丢线找回都走这条速度指令路径。八路循线模块优先采用 USART 数字模式，固件发送 <code>$0,0,1#</code> 请求数字数据，并解析 <code>$D,x1:0,...,x8:0#</code> 这类返回帧。当前实测模块语义为黑线输出 <code>0</code>、白底输出 <code>1</code>，所以固件默认把 <code>0</code> 作为有效线。</p>
-    <p>八路模块虽然也支持 IO 和 I2C，但 IO 会占用 8 个 GPIO，不利于迁移到 ESP32-C3；I2C 需要进一步确认地址和寄存器协议。USART 数字模式当前协议最明确、占用引脚少、迁移风险低。</p>
+    <p>八路模块虽然也支持 IO 和 I2C，但 IO 会占用 8 个 GPIO，不适配 ESP32-C3 紧张的引脚资源；I2C 需要进一步确认地址和寄存器协议。USART 数字模式当前协议最明确、占用引脚少、风险低。</p>
 
-    <h2>迁移到 ESP32-C3</h2>
-    <p>ESP32-C3 的串口和引脚资源比 ESP32-S3 更紧张。工程已经把目标芯片差异集中在板级配置文件中；如果实际 C3 板卡无法同时提供两路独立 UART，只需要改板级 profile 或增加外部串口扩展，不需要重写底盘、循线和控制模块。</p>
+    <h2>板级配置</h2>
+    <p>ESP32-C3 的串口和引脚资源较紧张。工程已经把目标芯片差异集中在板级配置文件中；如果 C3 板卡无法同时提供两路独立 UART，只需要改板级 profile 或增加外部串口扩展，不需要重写底盘、循线和控制模块。</p>
 
     <h2>无线调试</h2>
     <p>固件启动后默认开启 BLE Low Energy 调试入口和 DCtrl 遥控串口入口，统一广播名为 <code>DCtrl</code>，不再通过小程序改名。调参 BLE 服务 UUID 为 <code>7b3a0001-8d4d-4b9a-b5c7-0f7c4c415243</code>，向 RX 特征 <code>7b3a0002-8d4d-4b9a-b5c7-0f7c4c415243</code> 写入命令，从 TX 特征 <code>7b3a0003-8d4d-4b9a-b5c7-0f7c4c415243</code> 读取响应。DCtrl 遥控串口服务 UUID 为 <code>6d1f0001-5b9b-4f4e-9c67-7b1f4d430001</code>，写入特征 <code>6d1f0002-5b9b-4f4e-9c67-7b1f4d430001</code>，通知特征 <code>6d1f0003-5b9b-4f4e-9c67-7b1f4d430001</code>。</p>
@@ -63,9 +62,9 @@
     <p>DHelper 小程序 <code>line-tuning</code> 的短帧发送会一次性写入并保存 <code>Kp/Ki/Kd/速度档位</code> 四个值。JSON 调试接口仍保持停车调参规则，<code>save_params</code> 执行时才写入 NVS，避免高频调参损耗 flash。</p>
 
     <h2>当前开发环境</h2>
-    <p>本机已经安装 ESP-IDF <code>v5.5.4</code>，路径为 <code>/Users/schwartz/esp/esp-idf</code>，并安装了 ESP32-S3 与 ESP32-C3 两套目标工具链。当前工程使用 <code>partitions_single_4mb.csv</code> 自定义 4MB 单 app 分区布局（已移除 OTA），固件产物为 <code>build/DCar-Liner.bin</code> 或 <code>build-esp32c3/DCar-Liner.bin</code>。</p>
-    <p>ESP32-C3 迁移烟测也已经通过，使用独立配置 <code>sdkconfig.esp32c3</code> 和独立构建目录 <code>build-esp32c3/</code>，不会覆盖当前 S3 配置。</p>
-    <p>后续开发可在工程根目录使用 <code>./scripts/idf.sh build</code> 编译，使用 <code>./scripts/idf.sh -p /dev/cu.usbserial-1120 flash monitor</code> 烧录和查看日志。</p>
+    <p>本机已经安装 ESP-IDF <code>v5.5.4</code>，路径为 <code>/Users/schwartz/esp/esp-idf</code>，并安装了 ESP32-C3 目标工具链。当前工程使用 <code>partitions_single_4mb.csv</code> 自定义 4MB 单 app 分区布局（已移除 OTA），固件产物为 <code>build-esp32c3/DCar-Liner.bin</code>。</p>
+    <p>ESP32-C3 冒烟测试已经通过，使用配置 <code>sdkconfig.esp32c3</code> 和构建目录 <code>build-esp32c3/</code>。</p>
+    <p>后续开发可在工程根目录使用 <code>./scripts/idf.sh -B build-esp32c3 -DSDKCONFIG=sdkconfig.esp32c3 build</code> 编译，使用 <code>./scripts/idf.sh -B build-esp32c3 -DSDKCONFIG=sdkconfig.esp32c3 -p /dev/cu.usbmodem11201 flash monitor</code> 烧录和查看日志。</p>
   </main>
 </body>
 </html>

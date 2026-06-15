@@ -28,8 +28,6 @@ The matching local firmware binaries were generated before this record:
 
 - ESP32-C3: `build-esp32c3/DCar-Liner.bin`
   - SHA-256: `12c1eb6b00df61bfb9d2a8adbff94deb3b089421397229bbf00a57ac7c01cbec`
-- ESP32-S3: `build/DCar-Liner.bin`
-  - SHA-256: `216ccdf1a1b05f0288a04754c7790103a199d63baec717aea866c4d52e95d822`
 
 The source of truth for all current behavior strategies is:
 

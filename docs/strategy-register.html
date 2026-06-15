@@ -254,7 +254,7 @@
     <ul class="toc">
       <li><a href="#S01">S01 目标地图边界</a></li>
       <li><a href="#S02">S02 运动分层边界</a></li>
-      <li><a href="#S03">S03 板级迁移</a></li>
+      <li><a href="#S03">S03 板级配置</a></li>
       <li><a href="#S04">S04 循线传感器读取</a></li>
       <li><a href="#S05">S05 底盘速度协议</a></li>
       <li><a href="#S06">S06 连续发送运动指令</a></li>
@@ -297,15 +297,15 @@
         <tr><th>策略</th><td>底盘运动控制分为 <code>motion_contracts</code>、<code>control_plan</code>、<code>motion_inputs</code>、<code>line_interpreter</code>、<code>motion_policy</code>、<code>motion_executor</code> 六个边界。Layer 0 <code>motion_contracts</code> 是运动参数唯一真相层；<code>control_plan</code> 是策略层与执行层共享的控制指令合同；输入层只归一化，解析层估测几何关系，策略层生成运动意图，执行层转换为底盘输出合同。</td></tr>
         <tr><th>触发条件</th><td>任何新的循线、找线、速度、转向、ODOM、姿态或策略目标输入，都先判断应该进入哪一层，避免重新混回一个大 policy 文件。</td></tr>
         <tr><th>实现位置</th><td><code>components/control/include/motion_contracts.h</code>、<code>control_plan.h</code>、<code>motion_inputs.c</code>、<code>line_interpreter.c</code>、<code>motion_policy.c</code>、<code>motion_executor.c</code>；<code>line_trace_policy.c</code> 保留为稳定外部包装。</td></tr>
-        <tr><th>验证方法</th><td>S3/C3 双目标构建通过；速度档位、PID 曲线、扩幅摆扫找线和安全状态行为符合当前主干策略。</td></tr>
+        <tr><th>验证方法</th><td>C3 目标构建通过；速度档位、PID 曲线、扩幅摆扫找线和安全状态行为符合当前主干策略。</td></tr>
       </table>
     </article>
 
     <article class="strategy" id="S03">
-      <h3 class="strategy-title"><span class="sid">S03</span>板级迁移</h3>
+      <h3 class="strategy-title"><span class="sid">S03</span>板级配置</h3>
       <span class="tag product">兼容</span>
       <table>
-        <tr><th>策略</th><td>ESP32-S3 与 ESP32-C3 差异集中在板级 profile，不把芯片差异写进业务策略。</td></tr>
+        <tr><th>策略</th><td>ESP32-C3 的目标芯片差异集中在板级 profile，不把芯片差异写进业务策略。</td></tr>
         <tr><th>当前 C3 接线</th><td>底盘 <code>UART1 TX GPIO4 / RX GPIO5 / 115200</code>；循线模块 <code>UART0 TX GPIO2 / RX GPIO3 / 115200</code>；C3 控制台使用 USB Serial/JTAG。</td></tr>
         <tr><th>实现位置</th><td><code>components/board_profile</code>、<code>sdkconfig.esp32c3</code></td></tr>
         <tr><th>验证方法</th><td><code>./scripts/idf.sh -B build-esp32c3 -DSDKCONFIG=sdkconfig.esp32c3 build</code></td></tr>

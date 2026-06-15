@@ -4,7 +4,7 @@ Date: 2026-06-03
 
 ## Problem To Solve
 
-The ESP32-S3 root page is consistently reachable, but JSON API pages such as `/api/schema`, `/api/params`, and `/api/telemetry` open only rarely. The local code review found a direct structural risk: each HTTP API handler allocated an 8192-byte response buffer on the HTTP server task stack, while ESP-IDF's local `HTTPD_DEFAULT_CONFIG()` uses a 4096-byte default stack in `/Users/schwartz/esp/esp-idf/components/esp_http_server/include/esp_http_server.h`.
+The ESP32-C3 root page is consistently reachable, but JSON API pages such as `/api/schema`, `/api/params`, and `/api/telemetry` open only rarely. The local code review found a direct structural risk: each HTTP API handler allocated an 8192-byte response buffer on the HTTP server task stack, while ESP-IDF's local `HTTPD_DEFAULT_CONFIG()` uses a 4096-byte default stack in `/Users/schwartz/esp/esp-idf/components/esp_http_server/include/esp_http_server.h`.
 
 ## Researched Projects And Examples
 
@@ -26,7 +26,7 @@ The ESP32-S3 root page is consistently reachable, but JSON API pages such as `/a
 | 14 | [ESP Easy](https://github.com/letscontrolit/ESPEasy) | Web-based local configuration, device/plugin state, serial fallback. | Keep module diagnostics exposed as plain API values. |
 | 15 | [ESPurna](https://github.com/xoseperez/espurna) | Web UI and API for ESP8266/ESP32 devices, with MQTT/HTTP separation. | Separate transport choices from parameter semantics. |
 | 16 | [tzapu/WiFiManager](https://github.com/tzapu/WiFiManager) | Captive portal for configuration, small request handlers, custom params. | Use portal ideas only; do not import Arduino stack. |
-| 17 | [tonyp7/esp32-wifi-manager](https://github.com/tonyp7/esp32-wifi-manager) | ESP-IDF captive portal and Wi-Fi manager. | ESP-IDF-native Wi-Fi manager patterns fit our migration path. |
+| 17 | [tonyp7/esp32-wifi-manager](https://github.com/tonyp7/esp32-wifi-manager) | ESP-IDF captive portal and Wi-Fi manager. | ESP-IDF-native Wi-Fi manager patterns fit our ESP32-C3 target. |
 | 18 | [khoih-prog/ESP_WiFiManager](https://github.com/khoih-prog/ESP_WiFiManager) | Runtime credential and custom parameter portal. | Dynamic params are useful, but our NVS `param_store` remains the source of truth. |
 | 19 | [khoih-prog/ESPAsync_WiFiManager](https://github.com/khoih-prog/ESPAsync_WiFiManager) | Async server and custom parameter portal for ESP32/ESP8266. | Async style is useful for responsiveness; avoid pulling Arduino dependencies. |
 | 20 | [khoih-prog/ESP_WiFiManager_Lite](https://github.com/khoih-prog/ESP_WiFiManager_Lite) | Memory-reduced credential/config portal. | Keep our debug server lightweight and API-first. |
@@ -43,7 +43,7 @@ The ESP32-S3 root page is consistently reachable, but JSON API pages such as `/a
 
 ## Adopted Pattern
 
-- Use ESP-IDF HTTP server directly to preserve ESP32-S3 and ESP32-C3 portability.
+- Use ESP-IDF HTTP server directly to keep the ESP32-C3 implementation portable.
 - Explicitly configure the HTTP server stack size instead of relying on the 4096-byte default.
 - Allocate large JSON response buffers on the heap, then free them after sending.
 - Add `Cache-Control`, `Pragma`, `Expires`, and `Connection: close` headers for normal HTTP API reads.

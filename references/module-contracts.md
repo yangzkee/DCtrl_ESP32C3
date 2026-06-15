@@ -5,7 +5,7 @@
 - Goal: Keep target-chip differences in one place.
 - Inputs: ESP-IDF target selection, chosen board wiring, UART role requirements.
 - Outputs: `board_profile_t` containing UART port, TX/RX pins, baud rate, and buffer sizes.
-- Independent Test: Build once with `idf.py set-target esp32s3`, then with `idf.py set-target esp32c3`.
+- Independent Test: Build with `./scripts/idf.sh -B build-esp32c3 -DSDKCONFIG=sdkconfig.esp32c3 build`.
 - Current C3 Wiring: chassis `UART1 TX GPIO4 / RX GPIO5`; line sensor `UART0 TX GPIO2 / RX GPIO3`; C3 console uses USB Serial/JTAG so `UART0` is dedicated to line sensing.
 - Failure Rules: If a C3 board cannot expose two usable UART paths, do not edit chassis or sensor code. Change only the C3 board profile or add an external UART bridge profile.
 - Next Integration Boundary: Chassis and line sensor drivers consume only `board_uart_config_t`.
@@ -32,7 +32,7 @@
 
 - Goal: Convert line offset into chassis motion only when the vehicle state allows motion.
 - Inputs: `line_sensor_sample_t`, live parameters from `param_store`, and `vehicle_state_snapshot_t`.
-- Outputs: stop commands in safe/tuning/armed/fault/OTA states, short manual-test commands in `MANUAL_TEST`, PID motion commands in `AUTO_RUNNING`, slow-then-fast quadratic line-speed reduction when the active line drifts away from `x4/x5`, slow-then-fast quadratic turn growth from normalized offset, and zero-linear timed speed-command recovery when line bits are lost.
+- Outputs: stop commands in safe/tuning/armed/fault states, short manual-test commands in `MANUAL_TEST`, PID motion commands in `AUTO_RUNNING`, slow-then-fast quadratic line-speed reduction when the active line drifts away from `x4/x5`, slow-then-fast quadratic turn growth from normalized offset, and zero-linear timed speed-command recovery when line bits are lost.
 - Speed Profile: gear 1 sends up to `250 mm/s` with `8000 mdeg/cmd` turn limit; gear 2 sends up to `600 mm/s` with `10000 mdeg/cmd`; gear 3 sends up to `1000 mm/s` with `10000 mdeg/cmd`. At the outermost tracked offsets, adaptive slowdown keeps roughly 45% of the selected gear speed.
 - Independent Test: Verify boot telemetry shows `SAFE_IDLE`, `start_auto` is required before PID motion, lost line enters `LINE_LOST` phase with `linear_mm_s=0`, and BLE disconnect while active sends stop.
 - Failure Rules: Line loss and transient sensor read issues during auto-running do not enter `FAULT`; line loss uses the fixed timed left/right speed-command sweep and transient sensor read issues keep a conservative zero-linear search command. If the final 30 s timed segment finishes without line recovery, automatic line tracing exits to `SAFE_IDLE`. BLE disconnect while active immediately stops and returns to `SAFE_IDLE`. Chassis send failure still enters `CHASSIS_SEND_FAILED`.
@@ -40,11 +40,11 @@
 
 ## Vehicle State
 
-- Goal: Own the vehicle work model, including main motion state, wireless tuning session state, OTA maintenance state, fault reason, and manual-test timeout.
-- Inputs: Debug protocol commands such as `enter_tuning`, `exit_tuning`, `arm_auto`, `start_auto`, `stop`, `clear_fault`, and `manual_motion`, plus OTA handler requests to enter/finish `OTA_UPDATE`.
+- Goal: Own the vehicle work model, including main motion state, wireless tuning session state, fault reason, and manual-test timeout.
+- Inputs: Debug protocol commands such as `enter_tuning`, `exit_tuning`, `arm_auto`, `start_auto`, `stop`, `clear_fault`, and `manual_motion`.
 - Outputs: `vehicle_state_snapshot_t` for controller and telemetry.
 - Independent Test: Feed debug protocol commands and verify valid transitions plus rejected parameter writes outside `PARAM_TUNING`.
-- Failure Rules: `FAULT` and `OTA_UPDATE` cannot enter tuning directly. OTA may be entered from fault as a recovery path. Manual motion is accepted only in `PARAM_TUNING`.
+- Failure Rules: `FAULT` cannot enter tuning directly. Manual motion is accepted only in `PARAM_TUNING`.
 - Next Integration Boundary: Computer-side web tool mirrors these states and enables only valid actions.
 
 ## Parameter Store
@@ -69,20 +69,11 @@
 
 - Goal: Keep BLE available for low-power tuning, and expose Wi-Fi SoftAP plus HTTP/WebSocket only as an on-demand fallback.
 - Inputs: `debug_server_config_t`, compact BLE frames, debug protocol requests, and optional browser/WebSocket clients.
-- Outputs: BLE device name defaults to fixed `DCtrl`; after `W1`, SoftAP `DCar-Liner-XXXXXX`, HTTP API at `192.168.4.1`, WebSocket endpoint at `/ws`, and OTA endpoints at `/api/ota/status` and `/api/ota`.
-- Independent Test: Use `tools/ble_debug_tester.swift --command G --append-newline --expect-prefix P`; then send `W1` and call `/api/schema`, `/api/params`, `/api/telemetry`, and `/api/ota/status`.
+- Outputs: BLE device name defaults to fixed `DCtrl`; after `W1`, SoftAP `DCar-Liner-XXXXXX`, HTTP API at `192.168.4.1`, and WebSocket endpoint at `/ws`.
+- Independent Test: Use `tools/ble_debug_tester.swift --command G --append-newline --expect-prefix P`; then send `W1` and call `/api/schema`, `/api/params`, and `/api/telemetry`.
 - Name Control: `N` reads the BLE name, `N=<name>` saves a complete 1-20 UTF-8 byte name using CJK Chinese/ASCII letters/digits/`-`/`_`, and `N=*` restores the default Bluetooth-MAC name.
 - Failure Rules: Compact parameter writes return `E:RANGE`, `E:FAULT`, `E:BUSY`, or `E:SAVE`; Wi-Fi startup failures do not disable BLE.
 - Next Integration Boundary: DHelper mini program `line-tuning` uses only compact `G`/`S` PID+gear frames; Wi-Fi remains a fallback diagnostics path.
-
-## Firmware OTA
-
-- Goal: Update the ESP32 app image wirelessly after one USB install of the OTA-capable partition table.
-- Inputs: Raw `DCar-Liner.bin` body posted to `POST /api/ota` while connected to the ESP32 SoftAP.
-- Outputs: Write to the inactive OTA app partition, select it for boot, send a JSON success response, and reboot.
-- Independent Test: Build S3/C3, USB-flash the OTA-capable C3 firmware once, start Wi-Fi with BLE `W1`, check `GET /api/ota/status`, then run `python3 tools/ota_upload.py build-esp32c3/DCar-Liner.bin`.
-- Failure Rules: Oversized firmware is rejected; receive/write/image validation failures enter `FAULT` with `OTA_FAILED`; USB flashing remains the recovery path.
-- Next Integration Boundary: Keep OTA as a computer maintenance workflow until repeated manual uploads are stable.
 
 ## Telemetry
 
