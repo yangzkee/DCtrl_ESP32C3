@@ -11,6 +11,9 @@ static const board_profile_t ACTIVE_PROFILE = {
     .board_name = "esp32c3-portable-dual-uart-profile",
     .chassis_uart = {
         .role = BOARD_UART_ROLE_CHASSIS,
+        // 这根线接的是 DCar 底盘的「3 号串口」（底盘侧命名为 UART3，波特率 115200；
+        // 底盘其他串口为 460800）。下面的 UART_NUM_1 是 ESP32-C3 这一端的串口外设编号——
+        // ESP32-C3 整颗芯片只有 UART0/UART1 两个串口，没有 UART3，故此处必须是 UART_NUM_1。
         .port = UART_NUM_1,
         .tx_pin = GPIO_NUM_4,
         .rx_pin = GPIO_NUM_5,

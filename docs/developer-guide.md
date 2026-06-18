@@ -149,9 +149,10 @@
 
 C3 配置：
 
-- 底盘 UART：`UART1`，TX `GPIO4`，RX `GPIO5`，`115200 8N1`。
+- 底盘 UART：ESP 端为 `UART1`（外设编号），TX `GPIO4`，RX `GPIO5`，`115200 8N1`；线的另一端接 DCar 底盘的 **3 号串口（底盘侧称 UART3）**。底盘 3 号口波特率 115200，底盘其他串口为 460800。
 - 循线传感器 UART：`UART0`，TX `GPIO2`，RX `GPIO3`，`115200 8N1`。
 - 控制台：主输出在 USB Serial/JTAG 上，因此 `UART0` 预留给循线传感器驱动。
+- 命名提醒：ESP32-C3 整颗芯片只有 UART0/UART1，没有 UART3。代码里 `UART_NUM_1` 是 ESP 端外设，「UART3」是底盘端口名，二者是同一根线的两端，不要混改。
 
 UART 接线需交叉：ESP TX 接到外设 RX，ESP RX 接到外设 TX。
 
@@ -437,8 +438,8 @@ python3 tools/state_machine_tester.py --include-auto
 
 官方固件也包含探针式底盘诊断，因此
 临时的独立探针固件不再属于维护路径。
-在 ESP32-C3 上，当前官方底盘配置为 `UART1 TX GPIO4 / RX GPIO5`，
-波特率 `115200`，对应用户所选的 115200 底盘端口。BLE 紧凑
+在 ESP32-C3 上，当前官方底盘配置为 ESP 端外设 `UART1 TX GPIO4 / RX GPIO5`，
+波特率 `115200`，对应 DCar 底盘的 3 号串口（底盘侧称 UART3，115200；其他口 460800）。BLE 紧凑
 诊断命令为：
 
 - `C?`：报告官方固件的底盘 UART 引脚和波特率。

@@ -18,12 +18,14 @@
 
 ### ESP32-C3 接线
 
-| 用途 | UART | ESP TX | ESP RX | 波特率 |
-| --- | --- | --- | --- | --- |
-| 底盘指令串口 | UART1 | GPIO4 | GPIO5 | 115200 |
-| 八路循线传感器 | UART0 | GPIO2 | GPIO3 | 115200 |
+| 用途 | DCar 端口 | ESP32-C3 外设 | ESP TX | ESP RX | 波特率 |
+| --- | --- | --- | --- | --- | --- |
+| 底盘指令串口 | 3 号串口（UART3） | UART1 | GPIO4 | GPIO5 | 115200 |
+| 八路循线传感器 | — | UART0 | GPIO2 | GPIO3 | 115200 |
 
-控制台走 USB Serial/JTAG，因此 `UART0` 保留给循线传感器。
+控制台走 USB Serial/JTAG，因此 ESP 的 `UART0` 保留给循线传感器。
+
+> 注意命名：底盘指令线一端插在 **DCar 底盘的 3 号串口**（底盘侧称 **UART3**，波特率 115200；底盘其他串口为 460800），另一端由 **ESP32-C3 的 UART1 外设**（GPIO4/5）处理。ESP32-C3 整颗芯片只有 UART0/UART1，没有 UART3，故板级配置中的 `UART_NUM_1` 指的是 ESP 端外设，不要误改为 UART3。
 
 ### 板级配置
 
