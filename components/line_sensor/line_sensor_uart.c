@@ -61,25 +61,6 @@ static void status_note_result(esp_err_t err)
     taskEXIT_CRITICAL(&s_status_lock);
 }
 
-int8_t line_sensor_calculate_offset(uint8_t bits)
-{
-    static const int8_t weights[8] = {-7, -5, -3, -1, 1, 3, 5, 7};
-    int sum = 0;
-    int count = 0;
-
-    for (int i = 0; i < 8; ++i) {
-        if (bits & (1U << i)) {
-            sum += weights[i];
-            count++;
-        }
-    }
-
-    if (count == 0) {
-        return 0;
-    }
-    return (int8_t)(sum / count);
-}
-
 static esp_err_t request_digital_stream(void)
 {
     const char request[] = LINE_SENSOR_DIGITAL_REQUEST;
@@ -164,36 +145,6 @@ static esp_err_t read_ascii_frame(char *frame, size_t frame_size, uint64_t deadl
     return ESP_ERR_TIMEOUT;
 }
 
-static esp_err_t parse_digital_frame(const char *frame, uint8_t *bits)
-{
-    ESP_RETURN_ON_FALSE(frame != NULL && bits != NULL, ESP_ERR_INVALID_ARG, TAG, "missing digital frame args");
-    if (strncmp(frame, "$D,", 3) != 0) {
-        return ESP_ERR_INVALID_RESPONSE;
-    }
-
-    uint8_t parsed_bits = 0;
-    for (int i = 1; i <= 8; ++i) {
-        char key[5] = {0};
-        snprintf(key, sizeof(key), "x%d:", i);
-        const char *field = strstr(frame, key);
-        if (field == NULL) {
-            return ESP_ERR_INVALID_RESPONSE;
-        }
-
-        char *end = NULL;
-        long value = strtol(field + strlen(key), &end, 10);
-        if (end == field + strlen(key)) {
-            return ESP_ERR_INVALID_RESPONSE;
-        }
-        if (value == 0) {
-            parsed_bits |= (uint8_t)(1U << (i - 1));
-        }
-    }
-
-    *bits = parsed_bits;
-    return ESP_OK;
-}
-
 esp_err_t line_sensor_uart_read_sample(line_sensor_sample_t *sample, uint32_t timeout_ms)
 {
     ESP_RETURN_ON_FALSE(s_ready && sample != NULL, ESP_ERR_INVALID_STATE, TAG, "line sensor uart not ready");
@@ -210,7 +161,7 @@ esp_err_t line_sensor_uart_read_sample(line_sensor_sample_t *sample, uint32_t ti
             return err;
         }
 
-        err = parse_digital_frame(frame, &byte);
+        err = line_sensor_parse_digital_frame(frame, &byte);
         if (err == ESP_ERR_INVALID_RESPONSE) {
             status_note_result(err);
             continue;

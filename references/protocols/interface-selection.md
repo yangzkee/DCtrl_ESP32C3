@@ -15,7 +15,7 @@ The current controller maps:
 
 - `linear_mm_s` to `Vx` in m/s.
 - `Vy` to `0`.
-- `angular_mdeg_s` to `Vz` as a per-command Z angle increment.
+- `angular_mdeg_s` to `Wz` in rad/s, positive left / counterclockwise. Sending frequency does not scale the velocity.
 
 ## Eight-Channel Line Sensor
 

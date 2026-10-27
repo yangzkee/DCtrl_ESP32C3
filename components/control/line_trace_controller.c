@@ -40,13 +40,6 @@ static float get_float_param(const char *id, float fallback)
     return value;
 }
 
-static bool get_bool_param(const char *id, bool fallback)
-{
-    bool value = fallback;
-    ESP_ERROR_CHECK_WITHOUT_ABORT(param_store_get_bool(id, &value));
-    return value;
-}
-
 static void read_policy_config(line_trace_policy_config_t *config)
 {
     const int32_t gear = get_int_param("speed.gear", 2);
@@ -159,7 +152,6 @@ static void controller_task(void *arg)
         if (input.run_mode != LINE_TRACE_RUN_MANUAL_TEST) {
             esp_err_t err = line_sensor_uart_read_sample(&input.sample, timeout_ms);
             if (err == ESP_OK) {
-                motion_inputs_apply_line_inversion(&input.sample, get_bool_param("sensor.invert_bits", false));
                 telemetry_update_line_sample(&input.sample);
             } else if (err == ESP_ERR_TIMEOUT) {
                 input.sensor_status = LINE_TRACE_SENSOR_TIMEOUT;

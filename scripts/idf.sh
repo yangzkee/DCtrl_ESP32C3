@@ -3,6 +3,9 @@ set -euo pipefail
 
 PROJECT_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 export IDF_PATH="${IDF_PATH:-$HOME/esp/esp-idf}"
+if [[ -d "$PROJECT_ROOT/.idf-tools" ]]; then
+  export IDF_TOOLS_PATH="$PROJECT_ROOT/.idf-tools"
+fi
 
 if [[ ! -f "$IDF_PATH/export.sh" ]]; then
   print -u2 "ESP-IDF export.sh not found at: $IDF_PATH"

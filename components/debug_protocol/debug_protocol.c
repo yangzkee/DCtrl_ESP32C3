@@ -298,36 +298,34 @@ static esp_err_t handle_manual_motion(cJSON *root, char *response_json, size_t r
         } else if (strcmp(motion->valuestring, "backward") == 0) {
             cmd.vx_mm_s = -default_linear;
         } else if (strcmp(motion->valuestring, "left") == 0) {
-            cmd.yaw_mdeg = default_angular;
+            cmd.angular_mdeg_s = default_angular;
         } else if (strcmp(motion->valuestring, "right") == 0) {
-            cmd.yaw_mdeg = -default_angular;
+            cmd.angular_mdeg_s = -default_angular;
         } else if (strcmp(motion->valuestring, "stop") == 0) {
             cmd.vx_mm_s = 0;
             cmd.vy_mm_s = 0;
-            cmd.yaw_mdeg = 0;
+            cmd.angular_mdeg_s = 0;
         } else {
             return write_error_response(response_json, response_size, "unknown manual motion");
         }
     } else {
         const cJSON *vx = cJSON_GetObjectItemCaseSensitive(root, "vx_mm_s");
         const cJSON *vy = cJSON_GetObjectItemCaseSensitive(root, "vy_mm_s");
-        const cJSON *yaw = cJSON_GetObjectItemCaseSensitive(root, "yaw_mdeg");
         const cJSON *linear = cJSON_GetObjectItemCaseSensitive(root, "linear_mm_s");
         const cJSON *angular = cJSON_GetObjectItemCaseSensitive(root, "angular_mdeg_s");
-        if (!cJSON_IsNumber(vx) && !cJSON_IsNumber(vy) && !cJSON_IsNumber(yaw) &&
+        if (!cJSON_IsNumber(vx) && !cJSON_IsNumber(vy) &&
             !cJSON_IsNumber(linear) && !cJSON_IsNumber(angular)) {
             return write_error_response(response_json, response_size, "missing manual motion");
         }
         cmd.vx_mm_s = cJSON_IsNumber(vx) ? (int32_t)vx->valuedouble :
             (cJSON_IsNumber(linear) ? (int32_t)linear->valuedouble : 0);
         cmd.vy_mm_s = cJSON_IsNumber(vy) ? (int32_t)vy->valuedouble : 0;
-        cmd.yaw_mdeg = cJSON_IsNumber(yaw) ? (int32_t)yaw->valuedouble :
-            (cJSON_IsNumber(angular) ? (int32_t)angular->valuedouble : 0);
+        cmd.angular_mdeg_s = cJSON_IsNumber(angular) ? (int32_t)angular->valuedouble : 0;
     }
 
     if (cmd.vx_mm_s < -max_linear || cmd.vx_mm_s > max_linear ||
         cmd.vy_mm_s < -max_linear || cmd.vy_mm_s > max_linear ||
-        cmd.yaw_mdeg < -max_angular || cmd.yaw_mdeg > max_angular) {
+        cmd.angular_mdeg_s < -max_angular || cmd.angular_mdeg_s > max_angular) {
         return write_error_response(response_json, response_size, "manual motion exceeds safe limit");
     }
 
@@ -335,7 +333,7 @@ static esp_err_t handle_manual_motion(cJSON *root, char *response_json, size_t r
     if (err != ESP_OK) {
         return write_state_error(response_json, response_size, "manual_motion_invalid_state");
     }
-    if (cmd.vx_mm_s == 0 && cmd.vy_mm_s == 0 && cmd.yaw_mdeg == 0) {
+    if (cmd.vx_mm_s == 0 && cmd.vy_mm_s == 0 && cmd.angular_mdeg_s == 0) {
         ESP_ERROR_CHECK_WITHOUT_ABORT(chassis_uart_stop());
     } else {
         ESP_ERROR_CHECK_WITHOUT_ABORT(line_trace_controller_start(NULL));
@@ -362,7 +360,6 @@ static esp_err_t handle_chassis_diag(cJSON *root, char *response_json, size_t re
     cJSON_AddNumberToObject(out, "tx_pin", result.tx_pin);
     cJSON_AddNumberToObject(out, "rx_pin", result.rx_pin);
     cJSON_AddNumberToObject(out, "baud", result.baud_rate);
-    cJSON_AddNumberToObject(out, "linear_protocol_per_real", chassis_uart_linear_protocol_per_real());
     cJSON_AddNumberToObject(out, "tx_bytes", result.tx_bytes);
     cJSON_AddNumberToObject(out, "rx_bytes", result.rx_bytes);
     cJSON_AddNumberToObject(out, "frames", result.frames);

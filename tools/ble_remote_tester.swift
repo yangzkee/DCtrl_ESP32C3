@@ -33,11 +33,11 @@ func degreesToRadians(_ value: Double) -> Double {
     return value * Double.pi / 180.0
 }
 
-func motionVelocityFrame(vx: Double, vy: Double, vzDegPerCommand: Double) -> Data {
+func motionVelocityFrame(vx: Double, vy: Double, wzDegreesPerSecond: Double) -> Data {
     var payload = Data()
     appendInt32LE(dflinkFixedF32(vx), to: &payload)
     appendInt32LE(dflinkFixedF32(vy), to: &payload)
-    appendInt32LE(dflinkFixedF32(degreesToRadians(vzDegPerCommand)), to: &payload)
+    appendInt32LE(dflinkFixedF32(degreesToRadians(wzDegreesPerSecond)), to: &payload)
 
     var frame = Data([0xdf, 0x01, 0x97, 0x02, 0x62, 0x0c])
     frame.append(payload)
@@ -51,20 +51,20 @@ func remoteFrames(motion: String, durationMs: Int, intervalMs: Int) -> [Data] {
     let active: Data
     switch motion {
     case "forward":
-        active = motionVelocityFrame(vx: 0.5, vy: 0, vzDegPerCommand: 0)
+        active = motionVelocityFrame(vx: 0.5, vy: 0, wzDegreesPerSecond: 0)
     case "backward":
-        active = motionVelocityFrame(vx: -0.5, vy: 0, vzDegPerCommand: 0)
+        active = motionVelocityFrame(vx: -0.5, vy: 0, wzDegreesPerSecond: 0)
     case "strafe":
-        active = motionVelocityFrame(vx: 0, vy: 0.5, vzDegPerCommand: 0)
+        active = motionVelocityFrame(vx: 0, vy: 0.5, wzDegreesPerSecond: 0)
     case "yaw":
-        active = motionVelocityFrame(vx: 0, vy: 0, vzDegPerCommand: 5)
+        active = motionVelocityFrame(vx: 0, vy: 0, wzDegreesPerSecond: 5)
     default:
-        return [motionVelocityFrame(vx: 0, vy: 0, vzDegPerCommand: 0)]
+        return [motionVelocityFrame(vx: 0, vy: 0, wzDegreesPerSecond: 0)]
     }
 
     let safeInterval = max(1, intervalMs)
     let activeCount = max(1, Int((max(durationMs, safeInterval) + safeInterval - 1) / safeInterval))
-    let zero = motionVelocityFrame(vx: 0, vy: 0, vzDegPerCommand: 0)
+    let zero = motionVelocityFrame(vx: 0, vy: 0, wzDegreesPerSecond: 0)
     return Array(repeating: active, count: activeCount) + [zero, zero, zero]
 }
 

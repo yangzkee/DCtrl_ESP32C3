@@ -185,12 +185,12 @@ esp_err_t telemetry_build_json(char *buffer, size_t buffer_size)
                            "\"param_version\":%lu,"
                            "\"vehicle\":{\"motion_state\":\"%s\",\"debug_session\":\"%s\","
                            "\"fault\":\"%s\",\"state_entered_ms\":%lu,\"last_command_ms\":%lu},"
-                           "\"line\":{\"bits\":%u,\"offset\":%d,\"updated_ms\":%lu,"
+                           "\"line\":{\"target_color\":\"%s\",\"bits\":%u,\"offset\":%d,\"updated_ms\":%lu,"
                            "\"active_count\":%u,\"quality\":%u},"
                            "\"line_uart\":{\"ready\":%s,\"requests\":%lu,\"frames\":%lu,"
                            "\"digital_frames\":%lu,\"invalid_frames\":%lu,\"timeouts\":%lu,"
                            "\"last_error\":%d,\"last_frame\":\"%s\"},"
-                           "\"motion\":{\"vx_mm_s\":%ld,\"vy_mm_s\":%ld,\"yaw_mdeg\":%ld,"
+                           "\"motion\":{\"vx_mm_s\":%ld,\"vy_mm_s\":%ld,"
                            "\"linear_mm_s\":%ld,\"angular_mdeg_s\":%ld},"
                            "\"remote_bridge\":{\"success\":%lu,\"errors\":%lu,"
                            "\"bytes_rx\":%llu,\"bytes_tx\":%llu,"
@@ -214,6 +214,7 @@ esp_err_t telemetry_build_json(char *buffer, size_t buffer_size)
                            vehicle_fault_reason_name(vehicle.fault_reason),
                            (unsigned long)vehicle.state_entered_ms,
                            (unsigned long)vehicle.last_command_ms,
+                           line_sensor_target_color(),
                            line_sample.bits,
                            line_sample.offset,
                            (unsigned long)line_sample.updated_ms,
@@ -229,9 +230,8 @@ esp_err_t telemetry_build_json(char *buffer, size_t buffer_size)
                            last_frame,
                            (long)motion_cmd.vx_mm_s,
                            (long)motion_cmd.vy_mm_s,
-                           (long)motion_cmd.yaw_mdeg,
                            (long)motion_cmd.vx_mm_s,
-                           (long)motion_cmd.yaw_mdeg,
+                           (long)motion_cmd.angular_mdeg_s,
                            (unsigned long)remote_bridge_state.success_count,
                            (unsigned long)remote_bridge_state.error_count,
                            (unsigned long long)remote_bridge_state.bytes_received,

@@ -32,6 +32,8 @@ esp_err_t line_sensor_uart_init(const board_uart_config_t *config);
 esp_err_t line_sensor_uart_read_sample(line_sensor_sample_t *sample, uint32_t timeout_ms);
 void line_sensor_uart_get_status(line_sensor_uart_status_t *status);
 int8_t line_sensor_calculate_offset(uint8_t bits);
+esp_err_t line_sensor_parse_digital_frame(const char *frame, uint8_t *bits);
+const char *line_sensor_target_color(void);
 
 #ifdef __cplusplus
 }

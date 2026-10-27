@@ -12,48 +12,14 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
 
-#define DFLINK_PI 3.14159265358979323846f
 #define DFLINK_MAX_FRAME_BYTES 160
 #define DFLINK_MAX_PAYLOAD_BYTES 96
 #define DFLINK_DIAG_READ_CHUNK_BYTES 64
-#define CHASSIS_LINEAR_PROTOCOL_PER_REAL 10.0f
 
 static const char *TAG = "chassis_uart";
 static board_uart_config_t s_config;
 static bool s_ready;
 static SemaphoreHandle_t s_uart_mutex;
-
-static int32_t dflink_f32_fixed(float value)
-{
-    float scaled = value * 10000.0f;
-    if (scaled >= 0.0f) {
-        return (int32_t)(scaled + 0.5f);
-    }
-    return (int32_t)(scaled - 0.5f);
-}
-
-static void write_i32_le(uint8_t *buffer, int32_t value)
-{
-    buffer[0] = (uint8_t)(value & 0xFF);
-    buffer[1] = (uint8_t)((value >> 8) & 0xFF);
-    buffer[2] = (uint8_t)((value >> 16) & 0xFF);
-    buffer[3] = (uint8_t)((value >> 24) & 0xFF);
-}
-
-static void write_dflink_f32(uint8_t *buffer, float value)
-{
-    write_i32_le(buffer, dflink_f32_fixed(value));
-}
-
-static float motion_axis_cmd_to_protocol(int32_t mm_s)
-{
-    return (float)mm_s / 1000.0f;
-}
-
-static float angle_increment_cmd_to_protocol_vz(int32_t angular_mdeg)
-{
-    return ((float)angular_mdeg / 1000.0f) * (DFLINK_PI / 180.0f);
-}
 
 static uint16_t checksum16(const uint8_t *buffer, size_t len)
 {
@@ -146,20 +112,10 @@ static esp_err_t send_dflink_command_locked(uint8_t a,
     return err;
 }
 
-static esp_err_t send_motion_velocity_locked(float vx_m_s, float vy_m_s, float vz_rad_per_cmd, uint32_t *tx_bytes)
+static esp_err_t send_motion_command_locked(const chassis_motion_cmd_t *cmd, uint32_t *tx_bytes)
 {
-    uint8_t payload[DFLINK_MOTION_VELOCITY_PAYLOAD_BYTES] = {0};
-    write_dflink_f32(&payload[0], vx_m_s);
-    write_dflink_f32(&payload[4], vy_m_s);
-    write_dflink_f32(&payload[8], vz_rad_per_cmd);
-
-    uint8_t frame[32] = {0};
-    size_t frame_len = build_dflink_frame(DFLINK_A_MOTION,
-                                          DFLINK_B_MOTION_VELOCITY,
-                                          payload,
-                                          sizeof(payload),
-                                          frame,
-                                          sizeof(frame));
+    uint8_t frame[DFLINK_MOTION_FRAME_BYTES];
+    size_t frame_len = chassis_motion_encode(cmd, frame, sizeof(frame));
     if (frame_len == 0) {
         return ESP_ERR_INVALID_SIZE;
     }
@@ -168,14 +124,6 @@ static esp_err_t send_motion_velocity_locked(float vx_m_s, float vy_m_s, float v
         *tx_bytes += (uint32_t)frame_len;
     }
     return err;
-}
-
-static esp_err_t send_motion_command_locked(const chassis_motion_cmd_t *cmd, uint32_t *tx_bytes)
-{
-    const float vx_m_s = motion_axis_cmd_to_protocol(cmd->vx_mm_s);
-    const float vy_m_s = motion_axis_cmd_to_protocol(cmd->vy_mm_s);
-    const float vz_rad_per_cmd = angle_increment_cmd_to_protocol_vz(cmd->yaw_mdeg);
-    return send_motion_velocity_locked(vx_m_s, vy_m_s, vz_rad_per_cmd, tx_bytes);
 }
 
 static void bytes_to_hex(const uint8_t *bytes, size_t len, char *out, size_t out_size)
@@ -385,14 +333,9 @@ esp_err_t chassis_uart_stop(void)
     const chassis_motion_cmd_t stop_cmd = {
         .vx_mm_s = 0,
         .vy_mm_s = 0,
-        .yaw_mdeg = 0,
+        .angular_mdeg_s = 0,
     };
     return chassis_uart_send_motion(&stop_cmd);
-}
-
-float chassis_uart_linear_protocol_per_real(void)
-{
-    return CHASSIS_LINEAR_PROTOCOL_PER_REAL;
 }
 
 esp_err_t chassis_uart_diag_command(const char *command, chassis_diag_result_t *result)
@@ -424,7 +367,7 @@ esp_err_t chassis_uart_diag_command(const char *command, chassis_diag_result_t *
         const chassis_motion_cmd_t cmd = {
             .vx_mm_s = is_zero ? 0 : (is_scaled_500 ? 500 : 50),
             .vy_mm_s = 0,
-            .yaw_mdeg = (is_zero || is_scaled_500) ? 0 : 5729,
+            .angular_mdeg_s = (is_zero || is_scaled_500) ? 0 : 5729,
         };
         if (wait_for_rx) {
             ESP_ERROR_CHECK_WITHOUT_ABORT(uart_flush_input(s_config.port));
@@ -461,13 +404,12 @@ esp_err_t chassis_uart_diag_format_text(const chassis_diag_result_t *result, cha
 
     int written = snprintf(buffer,
                            buffer_size,
-                           "C:%s,ready=%d,txpin=%d,rxpin=%d,baud=%d,scale=%.1f,tx=%lu,rx=%lu,frames=%lu,ok=%lu,bad=%lu,last=%02X%02X,len=%u,ck=%d,err=%s\n",
+                           "C:%s,ready=%d,txpin=%d,rxpin=%d,baud=%d,tx=%lu,rx=%lu,frames=%lu,ok=%lu,bad=%lu,last=%02X%02X,len=%u,ck=%d,err=%s\n",
                            result->command,
                            result->ready ? 1 : 0,
                            result->tx_pin,
                            result->rx_pin,
                            result->baud_rate,
-                           chassis_uart_linear_protocol_per_real(),
                            (unsigned long)result->tx_bytes,
                            (unsigned long)result->rx_bytes,
                            (unsigned long)result->frames,

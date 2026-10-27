@@ -77,7 +77,7 @@ static void set_fixed_search_intent(line_trace_policy_runtime_t *runtime,
     intent->phase = phase;
     intent->plan.chassis_action = CONTROL_CHASSIS_ACTION_SEND_MOTION;
     intent->plan.chassis_cmd.vx_mm_s = 0;
-    intent->plan.chassis_cmd.yaw_mdeg = search_turn_mdeg(runtime);
+    intent->plan.chassis_cmd.angular_mdeg_s = search_turn_mdeg(runtime);
     intent->lost_line = true;
     intent->pid_output_mdeg_s = 0.0f;
     runtime->last_cmd = intent->plan.chassis_cmd;
@@ -91,13 +91,13 @@ typedef struct {
 } recovery_segment_t;
 
 static const recovery_segment_t k_recovery_segments[] = {
-    {-1, 800, LINE_TRACE_RECOVERY_STAGE_SWEEP},
-    {1, 1600, LINE_TRACE_RECOVERY_STAGE_SWEEP},
-    {-1, 3200, LINE_TRACE_RECOVERY_STAGE_SWEEP},
-    {1, 6400, LINE_TRACE_RECOVERY_STAGE_SWEEP},
-    {-1, 12800, LINE_TRACE_RECOVERY_STAGE_SWEEP},
-    {1, 25600, LINE_TRACE_RECOVERY_STAGE_SWEEP},
-    {1, 30000, LINE_TRACE_RECOVERY_STAGE_ONE_WAY_SEARCH},
+    {1, 800, LINE_TRACE_RECOVERY_STAGE_SWEEP},
+    {-1, 1600, LINE_TRACE_RECOVERY_STAGE_SWEEP},
+    {1, 3200, LINE_TRACE_RECOVERY_STAGE_SWEEP},
+    {-1, 6400, LINE_TRACE_RECOVERY_STAGE_SWEEP},
+    {1, 12800, LINE_TRACE_RECOVERY_STAGE_SWEEP},
+    {-1, 25600, LINE_TRACE_RECOVERY_STAGE_SWEEP},
+    {-1, 30000, LINE_TRACE_RECOVERY_STAGE_ONE_WAY_SEARCH},
 };
 
 static const size_t k_recovery_segment_count =
@@ -183,7 +183,7 @@ static bool build_sweep_recovery_motion(line_trace_policy_runtime_t *runtime,
         k_recovery_segments[runtime->recovery_segment_index].direction * config->max_turn_mdeg_s;
     *motion_cmd = (chassis_motion_cmd_t){
         .vx_mm_s = 0,
-        .yaw_mdeg = angular_mdeg_s,
+        .angular_mdeg_s = angular_mdeg_s,
     };
     runtime->recovery_last_direction_mdeg = angular_mdeg_s;
     runtime->last_cmd = *motion_cmd;
@@ -335,14 +335,14 @@ void motion_policy_plan(line_trace_policy_runtime_t *runtime,
     intent->phase = LINE_TRACE_PHASE_TRACK_LINE;
     intent->plan.chassis_action = CONTROL_CHASSIS_ACTION_SEND_MOTION;
     intent->plan.chassis_cmd.vx_mm_s = motion_line_adaptive_speed_mm_s(config->base_speed_mm_s, input->sample.offset);
-    intent->plan.chassis_cmd.yaw_mdeg = motion_clamp_i32((int32_t)(-pid_output),
+    intent->plan.chassis_cmd.angular_mdeg_s = motion_clamp_i32((int32_t)(-pid_output),
                                                                -config->max_turn_mdeg_s,
                                                                config->max_turn_mdeg_s);
     intent->pid_output_mdeg_s = pid_output;
     runtime->last_cmd = intent->plan.chassis_cmd;
     runtime->has_last_cmd = true;
-    if (intent->plan.chassis_cmd.yaw_mdeg != 0) {
-        runtime->last_tracking_angular_mdeg_s = intent->plan.chassis_cmd.yaw_mdeg;
+    if (intent->plan.chassis_cmd.angular_mdeg_s != 0) {
+        runtime->last_tracking_angular_mdeg_s = intent->plan.chassis_cmd.angular_mdeg_s;
         runtime->has_last_tracking_angular = true;
     }
     runtime->phase = intent->phase;

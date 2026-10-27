@@ -5,7 +5,7 @@
 - Goal: Keep target-chip differences in one place.
 - Inputs: ESP-IDF target selection, chosen board wiring, UART role requirements.
 - Outputs: `board_profile_t` containing UART port, TX/RX pins, baud rate, and buffer sizes.
-- Independent Test: Build with `./scripts/idf.sh -B build-esp32c3 -DSDKCONFIG=sdkconfig.esp32c3 build`.
+- Independent Test: Build with `python3 tools/build_line_firmwares.py`.
 - Current C3 Wiring: chassis `UART1 TX GPIO4 / RX GPIO5`; line sensor `UART0 TX GPIO2 / RX GPIO3`; C3 console uses USB Serial/JTAG so `UART0` is dedicated to line sensing.
 - Failure Rules: If a C3 board cannot expose two usable UART paths, do not edit chassis or sensor code. Change only the C3 board profile or add an external UART bridge profile.
 - Next Integration Boundary: Chassis and line sensor drivers consume only `board_uart_config_t`.
@@ -13,8 +13,8 @@
 ## Chassis UART
 
 - Goal: Send normalized motion commands to a serial-controlled car chassis.
-- Inputs: `chassis_motion_cmd_t` with protocol line speed in mm/s and per-command Z angle increment in mdeg/cmd.
-- Outputs: One DFLink `Motion_Velocity` frame per command. Linear commands are protocol values, so `linear_mm_s=500` emits payload `Vx=0.5`. The current field estimate is `protocol:real = 10:1` and is not applied before sending.
+- Inputs: `chassis_motion_cmd_t` with protocol line speed in mm/s and Z angular velocity in mdeg/s.
+- Outputs: One DFLink `Motion_Velocity` frame per command. Linear commands are protocol values, so `linear_mm_s=500` emits payload `Vx=0.5`. Velocities use m/s and rad/s without a legacy scale factor; actual motion needs field calibration.
 - Independent Test: Connect a USB-UART adapter or logic analyzer and verify `DF 01 97 02 62 0C ... FD sumL sumH`; use BLE `Cxyz500rx` for the `Vx=0.5` protocol-speed test.
 - Failure Rules: If target/source id or scaling differs, update only the DFLink encoder constants, not the controller.
 - Next Integration Boundary: Controller calls `chassis_uart_send_motion()`.
@@ -33,7 +33,7 @@
 - Goal: Convert line offset into chassis motion only when the vehicle state allows motion.
 - Inputs: `line_sensor_sample_t`, live parameters from `param_store`, and `vehicle_state_snapshot_t`.
 - Outputs: stop commands in safe/tuning/armed/fault states, short manual-test commands in `MANUAL_TEST`, PID motion commands in `AUTO_RUNNING`, slow-then-fast quadratic line-speed reduction when the active line drifts away from `x4/x5`, slow-then-fast quadratic turn growth from normalized offset, and zero-linear timed speed-command recovery when line bits are lost.
-- Speed Profile: gear 1 sends up to `250 mm/s` with `8000 mdeg/cmd` turn limit; gear 2 sends up to `600 mm/s` with `10000 mdeg/cmd`; gear 3 sends up to `1000 mm/s` with `10000 mdeg/cmd`. At the outermost tracked offsets, adaptive slowdown keeps roughly 45% of the selected gear speed.
+- Speed Profile: gear 1 sends up to `250 mm/s` with `8000 mdeg/s` turn limit; gear 2 sends up to `600 mm/s` with `10000 mdeg/s`; gear 3 sends up to `1000 mm/s` with `10000 mdeg/s`. At the outermost tracked offsets, adaptive slowdown keeps roughly 45% of the selected gear speed.
 - Independent Test: Verify boot telemetry shows `SAFE_IDLE`, `start_auto` is required before PID motion, lost line enters `LINE_LOST` phase with `linear_mm_s=0`, and BLE disconnect while active sends stop.
 - Failure Rules: Line loss and transient sensor read issues during auto-running do not enter `FAULT`; line loss uses the fixed timed left/right speed-command sweep and transient sensor read issues keep a conservative zero-linear search command. If the final 30 s timed segment finishes without line recovery, automatic line tracing exits to `SAFE_IDLE`. BLE disconnect while active immediately stops and returns to `SAFE_IDLE`. Chassis send failure still enters `CHASSIS_SEND_FAILED`.
 - Next Integration Boundary: Later PID tuning and chassis direction confirmation.

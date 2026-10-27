@@ -1,3 +1,15 @@
+# ESP32-C3 循迹开发说明
+
+## 当前双固件发布（V1.1.0）
+
+执行 `python3 tools/build_line_firmwares.py`，单入口完成黑白两版原生回归、ESP-IDF 编译、合并与校验，累计超时 300 秒。产物为 `release-packages/DCtrl_V1.1.0_black-line.bin` 和 `release-packages/DCtrl_V1.1.0_white-line.bin`；均为 4MB 合并镜像，从 `0x0` 烧录。完整烧录会清除 NVS，PID/档位恢复默认。版本字段分别为 `1.1.0-black` 和 `1.1.0-white`，启动日志及 telemetry `line.target_color` 显示目标颜色。
+
+构建参数 `DCTRL_LINE_COLOR=black|white` 仅影响传感器归一化与应用版本，两个版本共享控制策略。输入是 `$D,x1:0|1,...,x8:0|1#`；输出是“目标颜色命中”的 8 位掩码和偏移。x1 约定为车辆前进方向左侧，x8 为右侧。独立测试入口为 `tools/line_following_regression.c`，覆盖全部 256 种传感器组合、无效帧、协议编码、左右纠偏、找线、重新捕获及超时停车。UART 采集负责组帧，纯解析模块负责校验及颜色归一化，再交给既有策略层。
+
+底盘 `02/62/LEN12` 三轴为 m/s、m/s、rad/s，S32 小端 ×10000；内部 `angular_mdeg_s` 为毫度/秒，正左负右。编码器不乘除循环周期。原速度档位和 PID 数值保留，尚未在新版底盘实车标定；首次试车从一档开始。诊断查询、新版轨迹队列与双向蓝牙桥接不在本次适配范围。
+
+本地工具链位于 `.idf-tools/`，由 `scripts/idf.sh` 自动选择；ESP-IDF 源码仍在 `$HOME/esp/esp-idf`，可用 `IDF_PATH` 指定。构建目录为临时 `output/.firmware-build/`，发布通过后删除；旧二进制、历史固件备份与发布包由同一发布入口清理，只保留当前两版固件。`manifest.json` 记录版本、哈希、编译与离线验证结果，实车通过与否单独标记。
+
 # 开发者指南
 
 ## 当前固件形态
@@ -28,7 +40,7 @@
 
 ## 当前循线地图范围
 
-当前项目地图刻意保持简单：地面上一个由黑色胶带贴成的不规则圆圈。其不规则性来自手工贴胶带的自然误差，而非刻意设计的迷宫。车辆只需保持在该回路上并持续循线即可。
+当前项目地图为浅底黑线或深底白线贴成的不规则圆圈，需选择对应固件。其不规则性来自手工贴胶带的自然误差，而非刻意设计的迷宫。车辆只需保持在该回路上并持续循线即可。
 
 当前运动代码的范围之外的内容：
 
@@ -71,7 +83,7 @@
 - `LINE_LOST`：运行中无有效循线位；策略持续发送 `linear_mm_s=0` 的 DFLink `Motion_Velocity`，并进行逐步扩大的定时左右搜索。固定序列为：左 `0.8 s`、右 `1.6 s`、左 `3.2 s`、右 `6.4 s`、左 `12.8 s`、右 `25.6 s`，最后右 `30.0 s`。若在最后一段之后仍未找回线，plan 请求 `STOP_TO_IDLE`。
 - `SENSOR_FAULT`：传感器超时或解析/读取错误；运行期间，策略持续发送安全的零线速搜索指令，而不是立即进入故障。
 
-丢线恢复刻意拆分为两路输出。运动输出是通过 `control_plan_t` 发出的安全恢复指令：`SEND_MOTION`，其中 `linear_mm_s=0`，`angular_mdeg_s` 设为当前档位的正常转向限值。档位 1/2/3 分别使用 `8000/10000/10000 mdeg/cmd`。诊断输出记录线回来时推断出的首个几何关系：`UNDERSTEER` 表示成功的恢复方向与最后一次有效跟踪转向一致，而 `OSCILLATION_SKEW` 表示线从相反方向回来。遥测会暴露定时扫描的 `segment_index`、`elapsed_ms` 和 `target_ms`。该关系目前仅作遥测用途，尚未改变 PID 增益、速度或未来的转向决策。
+丢线恢复刻意拆分为两路输出。运动输出是通过 `control_plan_t` 发出的安全恢复指令：`SEND_MOTION`，其中 `linear_mm_s=0`，`angular_mdeg_s` 设为当前档位的正常转向限值。档位 1/2/3 分别使用 `8000/10000/10000 mdeg/s`。诊断输出记录线回来时推断出的首个几何关系：`UNDERSTEER` 表示成功的恢复方向与最后一次有效跟踪转向一致，而 `OSCILLATION_SKEW` 表示线从相反方向回来。遥测会暴露定时扫描的 `segment_index`、`elapsed_ms` 和 `target_ms`。该关系目前仅作遥测用途，尚未改变 PID 增益、速度或未来的转向决策。
 
 要修改循线行为，请按意图选择对应的层：
 
@@ -123,7 +135,7 @@
 
 循线质量主要受以下因素影响：
 
-- 循线传感器黑色输出是否如预期为 `0`；`sensor.invert_bits` 仅用于输出相反的传感器模块。
+- 循线传感器黑色输出是否为 `0`、白色是否为 `1`；烧录的固件颜色必须与目标线一致。
 - 传感器高度、对齐情况，以及黑色胶带对 8 通道阵列是否足够宽。
 - 循环周期和传感器超时。
 - 速度档位，它同时映射前进速度和转向限值。
@@ -176,29 +188,22 @@ ESP-IDF v5.5.4
 ./scripts/idf.sh --version
 ```
 
-## 构建命令
+## 构建与烧录
 
 ```sh
-./scripts/idf.sh -B build-esp32c3 -DSDKCONFIG=sdkconfig.esp32c3 build
-./scripts/idf.sh -B build-esp32c3 -DSDKCONFIG=sdkconfig.esp32c3 -p /dev/cu.usbmodem11201 flash monitor
+python3 tools/build_line_firmwares.py
 ```
 
-当前 ESP32-C3 构建验证通过，并生成 `build-esp32c3/DCar-Liner.bin`。
+统一入口输出黑线和白线两份完整镜像、说明与校验记录。使用 ESP32-C3、4MB Flash、`partitions_single_4mb.csv` 单 factory app 分区；应用偏移 `0x10000`、大小 `0x3B0000`，整份镜像从 `0x0` 烧录。完整镜像包含空白 NVS，因此更新后重新保存 PID 和档位。无线 OTA 未提供，更新使用 USB / Web Serial。
 
-固件使用自定义的 4 MB 单 app 分区表 `partitions_single_4mb.csv`。只有一个 `factory` app 槽（`0x3B0000`）；空中升级（OTA）已被移除，因此固件只能通过 USB 或 web-serial 烧录更新。
-
-更改分区表后，先通过 USB 烧录一次，让 bootloader 看到新布局：
-
-```sh
-./scripts/idf.sh -B build-esp32c3 -DSDKCONFIG=sdkconfig.esp32c3 -p /dev/cu.usbmodem11201 flash
-```
+临时编译目录在发布通过后自动清理；不再使用旧构建目录中的文件。发布脚本不连接或烧录硬件，硬件验收需选择颜色后单独完成。
 
 ## 无线调试 API
 
 默认无线模式：
 
 - BLE 默认启动，作为低功耗调参/调试入口。
-- DCtrl 远程桥接作为透明的 BLE UART 服务启动。小程序发送 21 字节的 DFLink 帧；固件原样把 BLE 写入字节转发给底盘 UART。对于远程旋转，小程序负责业务级的 `Vz deg/cmd`，并在 BLE 写入前将其编码为 DFLink 线级的 `rad/cmd`。
+- DCtrl 远程桥接作为透明的 BLE UART 服务启动。小程序发送 21 字节的 DFLink 帧；固件原样把 BLE 写入字节转发给底盘 UART。对于远程旋转，小程序负责业务级的 `Vz deg/s`，并在 BLE 写入前将其编码为 DFLink 线级的 `rad/s`。
 - Wi-Fi SoftAP 默认关闭，以降低功耗。
 - 紧凑 BLE 命令 `W1` 启动回退的 Wi-Fi SoftAP 和 HTTP/WebSocket 服务器。
 
@@ -271,11 +276,11 @@ DHelper 小程序的循线控制在同一组 RX/TX
 - `pid.kd`：`0-3000`
 - `speed.gear`：`1-3`
 
-`speed.gear` 同时映射协议线速度和每条指令的 Z 角度增量限值：
+`speed.gear` 同时映射线速度和 Z 角速度限值：
 
-- 档位 1：最大协议线速度 `250 mm/s`（`Vx=0.25`），Z 限值 `8000 mdeg/cmd`
-- 档位 2：最大协议线速度 `600 mm/s`（`Vx=0.6`），Z 限值 `10000 mdeg/cmd`
-- 档位 3：最大协议线速度 `1000 mm/s`（`Vx=1.0`），Z 限值 `10000 mdeg/cmd`
+- 档位 1：最大协议线速度 `250 mm/s`（`Vx=0.25`），Z 限值 `8000 mdeg/s`
+- 档位 2：最大协议线速度 `600 mm/s`（`Vx=0.6`），Z 限值 `10000 mdeg/s`
+- 档位 3：最大协议线速度 `1000 mm/s`（`Vx=1.0`），Z 限值 `10000 mdeg/s`
 
 自动循线期间，这些是最大线速度。当有效循线
 位置偏离中央对 `x4/x5` 时，策略以先慢后快的二次曲线降低线
@@ -339,7 +344,7 @@ BLE 紧凑命令 `S<kp>,<ki>,<kd>,<gear>` 同样会短暂进入调参、校验�
 - `AUTO_RUNNING`：允许闭环循线发送运动指令。
 - `FAULT`：底盘发送失败或安全状态非法；用 `clear_fault` 显式清除。正常丢线由搜索阶段处理，而不是进入 `FAULT`。
 
-`manual_motion` 接受 `motion` 为 `forward`、`backward`、`left`、`right` 或 `stop`，或者接受数值型的 `linear_mm_s` 和 `angular_mdeg_s`。手动指令限制为 `1500 mm/s`、`10000 mdeg/cmd` 和 `50-3000 ms`；线速值作为 DFLink 协议速度值发送，而 Z 值是每条指令的角度增量。协议 `Vx=0.5` 是实测下舒适的手动测试速度，而自动循线目前上限为 `Vx=1.0`。
+`manual_motion` 接受 `motion` 为 `forward`、`backward`、`left`、`right` 或 `stop`，或者接受数值型的 `linear_mm_s` 和 `angular_mdeg_s`。手动指令限制为 `1500 mm/s`、`10000 mdeg/s` 和 `50-3000 ms`；线速值作为 DFLink 协议速度值发送，而 Z 值是角速度。协议 `Vx=0.5` 是实测下舒适的手动测试速度，而自动循线目前上限为 `Vx=1.0`。
 
 ## 计算机端状态机测试工具
 
@@ -399,15 +404,14 @@ python3 tools/state_machine_tester.py --include-auto
 - `control.max_turn_mdeg_s`
 - `control.loop_period_ms`
 - `sensor.timeout_ms`
-- `sensor.invert_bits`
 
-进行冒烟测试时，使用 C3 构建目录和 SDK 配置：
+定向回归与两版编译使用统一入口：
 
 ```sh
-./scripts/idf.sh -B build-esp32c3 -DSDKCONFIG=sdkconfig.esp32c3 build
+python3 tools/build_line_firmwares.py
 ```
 
-当前 ESP32-C3 冒烟构建验证通过，并生成 `build-esp32c3/DCar-Liner.bin`。
+验证状态以发布的 `manifest.json` 为准，离线通过与实车验收分开记录。
 
 ## 保留的协议参考
 
@@ -427,13 +431,11 @@ python3 tools/state_machine_tester.py --include-auto
 - 载荷：`Vx`、`Vy`、`Vz`，为 DFLink F32 定点值。
 - `linear_mm_s` 是以 mm/s 表示的 DFLink 协议速度指令，而非
   保证的真实世界速度。`500 mm/s` 在 DFLink 载荷中发送 `Vx=0.5`。
-- 当前现场标定估计为 `protocol speed : real speed = 10:1`。
-  该比例用于日后解读实测底盘速度，而非在
-  把值发送给底盘之前对其进行缩放。
+- 线速度按 m/s 发送，角速度按 rad/s 发送；不施加旧底盘的 10:1 实测估计。新版底盘的实际速度和转向效果须重新实车标定。
 - `Vy` 固定为 `0`。
-- `angular_mdeg_s` 现被当作以毫度表示的每条指令 Z 角度增量，并映射为 DFLink `Vz` 的每条指令弧度值。底盘必须持续接收指令才能保持运动。
+- `angular_mdeg_s` 现被当作以毫度表示的Z 角速度，并映射为 DFLink `Vz` 的弧度/秒。底盘必须持续接收指令才能保持运动。
 
-对于 DCtrl 遥控，固件不调用该转换路径。小程序是 DFLink 远程帧的真实来源，包括 `Vz deg/cmd` 到线级 `rad/cmd` 的转换，而 ESP32-C3 远程服务只转发原始字节。这保留了旧的蓝牙串口行为，并防止手机端和固件端的运动策略相互冲突。
+对于 DCtrl 遥控，固件不调用该转换路径。小程序是 DFLink 远程帧的真实来源，包括 `Vz deg/s` 到线级 `rad/s` 的转换，而 ESP32-C3 远程服务只转发原始字节。这保留了旧的蓝牙串口行为，并防止手机端和固件端的运动策略相互冲突。
 
 官方固件也包含探针式底盘诊断，因此
 临时的独立探针固件不再属于维护路径。
@@ -448,7 +450,7 @@ python3 tools/state_machine_tester.py --include-auto
 - `Crepeat`：依次发送 ready、version 和 params 查询。
 - `Codom`：以 10 Hz 请求里程计并短暂监听响应帧。
 - `Cxyz`：发送一帧低速 `Motion_Velocity` 测试帧，`Vx=0.05 m/s`、
-  `Vy=0`、`Vz=0.10 rad/cmd`；这主要验证 XYZ 速度指令路径，
+  `Vy=0`、`Wz=0.10 rad/s`；这主要验证 XYZ 速度指令路径，
   可能不产生响应。
 - `Cxyzrx`：发送同样的低速 XYZ 帧，然后在官方 RX 引脚上
   短暂监听底盘返回字节。
@@ -486,7 +488,7 @@ $0,0,1#
 $D,x1:0,x2:0,x3:0,x4:0,x5:0,x6:0,x7:0,x8:0#
 ```
 
-当前硬件把黑线报告为 `0`、白色背景报告为 `1`，因此每个为零的通道值都成为一个有效循线位。若未来某个传感器模块报告相反的极性，通过无线调试 API 调整 `sensor.invert_bits`。
+当前硬件把黑色报告为 `0`、白色报告为 `1`。黑线版把 `0` 归一化为有效循线位，白线版把 `1` 归一化为有效循线位；归一化后共用同一套偏移、PID、找线与停车逻辑。目标颜色由 `DCTRL_LINE_COLOR=black|white` 固定编译，参数 API 不提供黑白切换，旧 NVS 反转值不会改变固件颜色。
 
 `GET /api/telemetry` 还为调试引导包含一个 `line_uart` 诊断对象：
 

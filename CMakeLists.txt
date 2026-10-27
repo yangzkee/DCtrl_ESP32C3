@@ -1,4 +1,15 @@
 cmake_minimum_required(VERSION 3.16)
 
+set(DCTRL_LINE_COLOR "black" CACHE STRING "Track color: black or white")
+set_property(CACHE DCTRL_LINE_COLOR PROPERTY STRINGS black white)
+if(DCTRL_LINE_COLOR STREQUAL "black")
+    set(DCTRL_TRACK_WHITE 0)
+elseif(DCTRL_LINE_COLOR STREQUAL "white")
+    set(DCTRL_TRACK_WHITE 1)
+else()
+    message(FATAL_ERROR "DCTRL_LINE_COLOR must be black or white")
+endif()
+set(PROJECT_VER "1.1.0-${DCTRL_LINE_COLOR}")
+
 include($ENV{IDF_PATH}/tools/cmake/project.cmake)
 project(DCar-Liner)

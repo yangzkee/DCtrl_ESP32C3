@@ -64,7 +64,7 @@ DFLink 使用固定帧结构承载上位机到设备的控制、设置、访问�
 | 翻滚状态 | 滚动类参数 | 0x01 | 0x5E | 4 | [1] SDate1: F16；[2] SDate2: F16 | 公开 |
 | 渐远 / 漂移 | 未生效 | 0x01 | 0x5F | 0 | 无额外 payload；LEN=0。 | 公开 |
 | 冲天 | 未生效 | 0x01 | 0x60 | 0 | 无额外 payload；LEN=0。 | 公开 |
-| Motion_Velocity | 三轴速度控制；Vx/Vy 为平动速度，当前底盘实测 Vz 为每条指令的 Z 轴角度增量。 - Payload 为 `Vx, Vy, Vz` 三个 F32。 - `Vx/Vy` 单位为 m/s，`Vz` 按 angle increment/cmd 使用。 Payload 为 Vx, Vy, Vz 三个 F32。 | 0x02 | 0x62 | 12 | [1] Vx: F32 / m/s；[2] Vy: F32 / m/s；[3] Vz: F32 / angle increment/cmd | 公开 |
+| Motion_Velocity | 三轴速度控制；Vx/Vy 为平动速度，当前底盘实测 Vz 为Z 轴角速度。 - Payload 为 `Vx, Vy, Vz` 三个 F32。 - `Vx/Vy` 单位为 m/s，`Vz` 按 rad/s 使用。 Payload 为 Vx, Vy, Vz 三个 F32。 | 0x02 | 0x62 | 12 | [1] Vx: F32 / m/s；[2] Vy: F32 / m/s；[3] Vz: F32 / rad/s | 公开 |
 | Motion_Rotate | 原地旋转；dyaw_rad 为相对偏航角，omega_max_rad_s 为最大角速度。 - Payload 为 `dyaw_rad, omega_max_rad_s` 两个 F32。 - yaw 按逆时针为正，即 CCW+。 Payload 为 dyaw_rad, omega_max_rad_s 两个 F32。 yaw 按逆时针为正，即 CCW+。 | 0x02 | 0x63 | 8 | [1] dyaw_rad: F32 / rad；[2] omega_max_rad_s: F32 / rad/s | 公开 |
 | Motion_Linear | 保持航向不变平移；Profile 可选，LEN=12 时默认 1。 - Payload 为 `Px, Py, Speed [, Profile]`。 - `Profile=1` 表示梯形加减速；`0` 或其它值表示匀速。 Payload 为 Px, Py, Speed [, Profile] 。 Profile=1 表示梯形加减速； 0 或其它值表示匀速。 | 0x02 | 0x64 | 12或13 | [1] Px: F32 / m；[2] Py: F32 / m；[3] Speed: F32 / m/s；[4] Profile: U8 / 可选，LEN=12时默认1 | 公开 |
 | Motion_LinearWithYaw | 带相对 yaw 的平移；Profile 可选，当前固件解析该字段但行为固定为匀速。 - Payload 为 `Px, Py, dyaw_rad, Speed [, Profile]`。 - `dyaw_rad` 单位为 rad；Profile 字段保留但当前固件固定匀速。 Payload 为 Px, Py, dyaw_rad, Speed [, Profile] 。 dyaw_rad 单位为 rad；Profile 字段保留但当前固件固定匀速。 | 0x02 | 0x65 | 16或17 | [1] Px: F32 / m；[2] Py: F32 / m；[3] dyaw_rad: F32 / rad；[4] Speed: F32 / m/s；[5] Profile: U8 / 可选，当前固件固定匀速 | 公开 |

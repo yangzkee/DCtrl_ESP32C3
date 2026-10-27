@@ -37,13 +37,3 @@ void motion_inputs_from_vehicle(line_trace_policy_input_t *input, const vehicle_
         input->manual_cmd = vehicle->manual_cmd;
     }
 }
-
-void motion_inputs_apply_line_inversion(line_sensor_sample_t *sample, bool invert_bits)
-{
-    if (sample == 0 || !invert_bits) {
-        return;
-    }
-
-    sample->bits = (uint8_t)~sample->bits;
-    sample->offset = line_sensor_calculate_offset(sample->bits);
-}

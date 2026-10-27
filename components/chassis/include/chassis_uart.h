@@ -38,7 +38,6 @@ esp_err_t chassis_uart_init(const board_uart_config_t *config);
 esp_err_t chassis_uart_write_raw(const uint8_t *bytes, size_t len, uint32_t *tx_bytes);
 esp_err_t chassis_uart_send_motion(const chassis_motion_cmd_t *cmd);
 esp_err_t chassis_uart_stop(void);
-float chassis_uart_linear_protocol_per_real(void);
 esp_err_t chassis_uart_diag_command(const char *command, chassis_diag_result_t *result);
 esp_err_t chassis_uart_diag_format_text(const chassis_diag_result_t *result, char *buffer, size_t buffer_size);
 esp_err_t chassis_uart_diag_command_text(const char *command, char *buffer, size_t buffer_size);

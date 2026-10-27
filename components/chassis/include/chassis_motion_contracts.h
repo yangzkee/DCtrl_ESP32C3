@@ -1,6 +1,7 @@
 #pragma once
 
 #include <stdbool.h>
+#include <stddef.h>
 #include <stdint.h>
 
 #ifdef __cplusplus
@@ -18,9 +19,12 @@ extern "C" {
 typedef struct {
     int32_t vx_mm_s;
     int32_t vy_mm_s;
-    // DFLink Motion_Velocity Vz is a per-command Z angle increment.
-    int32_t yaw_mdeg;
+    // DFLink Wz angular velocity: positive is left / counterclockwise.
+    int32_t angular_mdeg_s;
 } chassis_motion_cmd_t;
+
+#define DFLINK_MOTION_FRAME_BYTES 21
+size_t chassis_motion_encode(const chassis_motion_cmd_t *cmd, uint8_t *frame, size_t capacity);
 
 #ifdef __cplusplus
 }

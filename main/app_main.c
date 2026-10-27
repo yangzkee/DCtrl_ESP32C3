@@ -28,6 +28,7 @@ void app_main(void)
     ESP_ERROR_CHECK(param_store_init());
     vehicle_state_init();
 
+    ESP_LOGI(TAG, "line target=%s; Wz is rad/s, positive left", line_sensor_target_color());
     ESP_LOGI(TAG, "boot target=%s board=%s", profile->target_name, profile->board_name);
     ESP_LOGI(TAG, "chassis uart=%d tx=%d rx=%d baud=%d",
              profile->chassis_uart.port,

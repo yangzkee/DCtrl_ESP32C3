@@ -102,8 +102,8 @@ static param_entry_t s_params[] = {
         .definition = {
             .id = "control.max_turn_mdeg_s",
             .nvs_key = "max_turn",
-            .label = "Max turn delta per command",
-            .unit = "mdeg/cmd",
+            .label = "Max angular velocity",
+            .unit = "mdeg/s",
             .type = PARAM_TYPE_INT,
             .min_value = {.i32 = 0},
             .max_value = {.i32 = 10000},
@@ -137,19 +137,7 @@ static param_entry_t s_params[] = {
             .persistent = true,
         },
     },
-    {
-        .definition = {
-            .id = "sensor.invert_bits",
-            .nvs_key = "sns_inv",
-            .label = "Treat white sensor value as active",
-            .unit = "",
-            .type = PARAM_TYPE_BOOL,
-            .min_value = {.boolean = false},
-            .max_value = {.boolean = true},
-            .default_value = {.boolean = false},
-            .persistent = true,
-        },
-    },
+
 };
 
 static size_t entry_count(void)

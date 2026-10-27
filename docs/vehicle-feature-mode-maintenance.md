@@ -31,7 +31,7 @@ ESP32-C3 只暴露一个 BLE 名称 `DCtrl`。遥控服务是一个透传串口�
 - 不要让遥控桥成功路径重新变得“吵闹”。禁止对每帧转发的 BLE 写入回 `OK` 通知，因为它会与高频控制路径争抢；只允许错误通知。
 - 不要从 `get_telemetry` 移除 `remote_bridge` 遥测；它是现场诊断路径，用于证明卡顿上报期间 BLE 写入是否到达 ESP32-C3。`remote_bridge.max_gap_ms` 是会话级的，所以测试之间的空闲时间不能污染该值。
 - 不要让残留的 BLE 调试 RX 流跨越连接边界。在连接和断开时清空紧凑/JSON 流缓冲，使一次会话里被截断的命令不会成为下一条命令的前缀。
-- 不要在 ESP32-C3 内部平滑 DCtrl 遥控旋转。小程序拥有业务层 `Vz deg/cmd` 档位，并必须把它编码为 DFLink 线缆层 `rad/cmd`；桥依然原样转发字节。
+- 不要在 ESP32-C3 内部平滑 DCtrl 遥控旋转。小程序拥有业务层 `Vz deg/s` 档位，并必须把它编码为 DFLink 线缆层 `rad/s`；桥依然原样转发字节。
 - 不要在遥控桥内部反转、重新解释或特殊处理共享坐标符号。遥控 DFLink 字节已使用 `X > 0` 前进、`Y > 0` 左、`Z/Yaw > 0` 左/逆时针。
 - 不要把 `WHEELTEC` 重新作为运行时设备名、扫描兼容路径、优先匹配、服务别名、代码模块、UI 文案或测试夹具。
 - 不要重新引入可编辑的 BLE 名称。`N` 读取 `DCtrl`，`N=*` 清除旧自定义名存储并恢复/确认 `DCtrl`，`N=<name>` 已禁用。
@@ -42,6 +42,6 @@ ESP32-C3 只暴露一个 BLE 名称 `DCtrl`。遥控服务是一个透传串口�
 
 - 小程序：在 `miniapp/dcar-ble-remote` 下执行 `npm run check` 和 `npm test`。
 - 固件静态边界检查：`python3 tools/check_feature_boundaries.py`。
-- 固件构建：`./scripts/idf.sh -B build-esp32c3 -DSDKCONFIG=sdkconfig.esp32c3 build`。
+- 固件构建：`python3 tools/build_line_firmwares.py`。
 - 遥控烟雾测试：`swift tools/ble_remote_tester.swift --timeout 25 --motion zero` 和 `--motion yaw`；该工具必须发送原始 21 字节 DFLink `Motion_Velocity` 帧，而不是已废弃的 13 字节遥控语义帧。
 - 烧录后硬件烟雾测试：连接 BLE `DCtrl`，确认遥控移动、松手零速、断连零速，然后单独验证循线调参和循线进入仍正常。

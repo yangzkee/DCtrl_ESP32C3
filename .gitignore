@@ -2,6 +2,7 @@
 build/
 build-esp32c3/
 managed_components/
+.idf-tools/
 dependencies.lock
 
 # Runtime and generated diagnostics

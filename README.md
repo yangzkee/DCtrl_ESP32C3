@@ -1,69 +1,37 @@
-# ESP32-C3 循线小车固件
+# DCtrl ESP32-C3 黑线 / 白线循迹固件
 
-本项目通过串口指令控制小车底盘，并通过 VGTI/UART 读取八路红外循线传感器。
+本项目读取八路红外循迹传感器，并通过 DF-Link 持续速度指令控制小车底盘。V1.1.0 提供两个固定颜色版本：
 
-## 需要配置什么
+| 固件 | 适用线路 |
+| --- | --- |
+| [黑线版 V1.1.0 下载](https://differ-tech.pages.dev/dctrl-flasher/DCtrl_V1.1.0_black-line.bin) | 浅色背景上的黑线 |
+| [白线版 V1.1.0 下载](https://differ-tech.pages.dev/dctrl-flasher/DCtrl_V1.1.0_white-line.bin) | 深色背景上的白线 |
 
-### 硬件
+两份均为 ESP32-C3 / 4MB 完整合并固件，**烧录地址为 `0x0`**，包含 bootloader、分区表与应用。烧录会清除旧参数；目标颜色不会被旧 NVS 设置覆盖。
 
-- 使用 ESP32-C3 开发板。
-- USB-C 串口用于烧录、日志和恢复。
-- 一路 UART：ESP32-C3 → 小车底盘指令口。
-- 一路 UART：ESP32-C3 → 八路红外循线传感器 VGTI/UART 口。
-- ESP32、底盘控制器、传感器模块必须共地。
-- UART 逻辑电平为 3.3V；外设若使用 5V 逻辑需加电平转换。
-- 电源做好隔离，避免电机电源噪声复位 ESP32 开发板。
-- Wi-Fi SoftAP 调试通道用于无线参数调试。
-- 预留 BLE 调试传输边界，供后续近距离调参使用。
+[网页烧录入口](https://differ-tech.pages.dev/portal/view/dctrl-flasher)支持选择黑线或白线版本。本地构建产物位于 `release-packages/`，不纳入 Git。
 
-### ESP32-C3 接线
+## 构建与验证
 
-| 用途 | UART | ESP TX | ESP RX | 波特率 |
-| --- | --- | --- | --- | --- |
-| 底盘指令串口 | UART1 | GPIO4 | GPIO5 | 115200 |
-| 八路循线传感器 | UART0 | GPIO2 | GPIO3 | 115200 |
-
-控制台走 USB Serial/JTAG，因此 `UART0` 保留给循线传感器。
-
-### 板级配置
-
-所有与芯片相关的 UART 和 GPIO 选择都集中在 `components/board/board_profile.c`。
-
-控制、底盘、传感器模块必须继续使用 `board_profile_t`，不要硬编码引脚。如果 ESP32-C3 板无法干净地引出两路独立 UART，只需修改板级配置（board profile），或新增一个外部 UART 桥接配置。
-
-## 当前协议
-
-- 底盘输出使用 DFLink `Motion_Velocity`：帧头 `0xDF`、目标 `0x01`、源 `0x97`、A=`0x02`、B=`0x62`、LEN=`12`，载荷 `Vx,Vy,Vz` 为定点 F32。
-- 循线传感器输入使用 USART 数字模式。固件发送 `$0,0,1#`，并解析 `$D,x1:0,...,x8:0#`。
-
-协议参考文件保存在 `references/protocols/`。
-
-八路循线传感器优先采用 USART 数字模式：只需两个引脚、协议完整已知、且适配 ESP32-C3 紧张的引脚资源。IO 直接读取需要八个 GPIO；I2C 在确认其地址/寄存器协议后可作为未来选项。
-
-## 无线调试脚手架
-
-固件以 `DCtrl` 名称进行 BLE 广播。可选的 Wi-Fi 后备仍会启动名为 `DCar-Liner-XXXXXX`、密码 `DCar-Liner123` 的 SoftAP。
-
-电脑连接该热点后：
-
-- 打开 `http://192.168.4.1/` 查看精简调试首页。
-- 从 `http://192.168.4.1/api/schema` 读取参数定义。
-- 从 `http://192.168.4.1/api/params` 读取当前参数。
-- 从 `http://192.168.4.1/api/telemetry` 读取当前遥测。
-- 使用 WebSocket `ws://192.168.4.1/ws` 进行实时调参。
-
-WebSocket 消息示例：
-
-```json
-{"type":"get_schema"}
+```sh
+python3 tools/build_line_firmwares.py
 ```
 
-```json
-{"type":"set_param","id":"pid.kp","value":7500}
-```
+单入口在累计 300 秒内完成两版离线回归、ESP-IDF 编译、合并、完整性及版本校验，然后清理本项目旧固件和历史发布包。发布记录与 SHA-256 位于 `release-packages/manifest.json`。编译使用 ESP-IDF v5.5.4，`scripts/idf.sh` 优先使用项目 `.idf-tools/` 工具链。
 
-```json
-{"type":"save_params"}
-```
+黑色传感器值为 `0`，白色为 `1`；由 `DCTRL_LINE_COLOR=black|white` 选择目标颜色。两版共享纠偏、丢线找回和停车逻辑。底盘使用 `02/62/LEN12`，三个数值为 m/s、m/s、rad/s，S32 小端 ×10000，正转向为左转；角速度不按发送周期缩放。
 
-实时更新会立即改变 RAM；只有在 `save_params` 之后才会写入 Flash 持久化。
+## 接线与使用
+
+| 用途 | ESP TX | ESP RX | 波特率 |
+| --- | --- | --- | --- |
+| 底盘 UART1 | GPIO4 | GPIO5 | 115200 |
+| 循迹传感器 UART0 | GPIO2 | GPIO3 | 115200 |
+
+ESP TX 接外设 RX，ESP RX 接外设 TX，所有设备共地，UART 使用 3.3V 逻辑。USB Serial/JTAG 用于控制台和烧录。传感器通道 x1 约定在车辆左侧、x8 在右侧。
+
+上电待机；DHelper 小程序先自检准备，再启动循迹。BLE 默认广播 `DCtrl`，调参命令及启动/停止协议沿用原接口。Wi-Fi 诊断后备通过 BLE `W1` 开启。
+
+速度档位和 PID 数值保留原设置，尚未在新版底盘实车标定。首次试车从一档开始，验证左右纠偏、直线、弯道、丢线找回和停车。编译或离线测试通过不代表实车验收通过。
+
+使用说明：`docs/system-guide.html`。开发与协议说明：`docs/developer-guide.md`。当前策略：`docs/strategy-register.html`。

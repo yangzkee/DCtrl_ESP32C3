@@ -56,7 +56,7 @@ The module does not send data by default after power-up. It only continuously se
 $D,x1:0,x2:0,x3:0,x4:0,x5:0,x6:0,x7:0,x8:0#
 ```
 
-The current verified hardware reports black line as `0` and white background as `1`. The firmware therefore treats every zero channel value as an active line bit. If a future module uses the opposite polarity, use the live parameter `sensor.invert_bits`.
+The current verified hardware reports black line as `0` and white background as `1`. The black-line firmware treats zero as active; the white-line firmware treats one as active. The build option `DCTRL_LINE_COLOR` fixes the target color; persisted settings cannot override it.
 
 ## USART Analog Response
 
