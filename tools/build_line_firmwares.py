@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Build, validate and replace the two ESP32-C3 line-following releases (300s total)."""
 
+import argparse
 import hashlib
 import json
 import os
@@ -18,7 +19,7 @@ BUILD = ROOT / "output/.firmware-build"
 RELEASE = ROOT / "release-packages"
 STATE = ROOT / ".codex/line-release-budget.json"
 LOG = ROOT / ".codex/line-release-build.log"
-VERSION = "1.1.0"
+VERSION = "1.1.0-dev460800-r5"
 
 
 def remove_tree(path):
@@ -29,6 +30,20 @@ def remove_tree(path):
 
 
 def main():
+    global BUILD, RELEASE, STATE, LOG, VERSION
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--development", action="store_true",
+                        help="build local 460800 test images in output/firmware-dev; keep release-packages intact")
+    parser.add_argument("--build-only", action="store_true",
+                        help="development only: compile/package without running regression tests")
+    options = parser.parse_args()
+    if options.build_only and not options.development:
+        parser.error("--build-only requires --development")
+    if options.development:
+        BUILD = ROOT / "output/.firmware-build-dev"
+        RELEASE = ROOT / "output/firmware-dev"
+        STATE = ROOT / ".codex/line-development-budget.json"
+        LOG = ROOT / ".codex/line-development-build.log"
     STATE.parent.mkdir(exist_ok=True)
     previous = json.loads(STATE.read_text()) if STATE.exists() else {}
     started = previous.get("started", time.time()) if previous.get("status") != "complete" else time.time()
@@ -76,31 +91,33 @@ def main():
         return output
 
     try:
-        run([sys.executable, ROOT / "tools/check_feature_boundaries.py"], "Feature ownership checks")
-        with tempfile.TemporaryDirectory(prefix="dctrl-regression-") as temp:
-            temp = Path(temp)
-            (temp / "esp_err.h").write_text(
-                "#pragma once\ntypedef int esp_err_t;\n#define ESP_OK 0\n"
-                "#define ESP_ERR_INVALID_ARG 1\n#define ESP_ERR_INVALID_RESPONSE 2\n")
-            (temp / "board_profile.h").write_text(
-                "#pragma once\ntypedef struct board_uart_config board_uart_config_t;\n")
-            includes = [temp] + [ROOT / "components" / component / "include"
-                                 for component in ("chassis", "line_sensor", "control", "vehicle_state")]
-            sources = [ROOT / "tools/line_following_regression.c",
-                       ROOT / "components/line_sensor/line_sensor_protocol.c",
-                       ROOT / "components/chassis/dflink_motion_codec.c"]
-            sources += [ROOT / "components/control" / (name + ".c") for name in
-                        ("motion_contracts", "motion_inputs", "line_interpreter", "motion_policy",
-                         "motion_executor", "line_trace_policy")]
-            for color, white in (("black", 0), ("white", 1)):
-                executable = temp / color
-                args = ["cc", "-std=c11", "-Wall", "-Wextra", "-Werror", "-O1",
-                        "-fsanitize=address,undefined", "-fno-omit-frame-pointer",
-                        "-DDCTRL_TRACK_WHITE=" + str(white)]
-                for include in includes:
-                    args += ["-I", include]
-                run(args + sources + ["-o", executable], color + " native regression compilation")
-                run([executable], color + " sensor/steering/recovery/wire regressions")
+        if not options.build_only:
+            run([sys.executable, ROOT / "tools/check_feature_boundaries.py"], "Feature ownership checks")
+            run([sys.executable, ROOT / "tools/test_chassis_uart.py"], "Chassis UART driver regressions")
+            with tempfile.TemporaryDirectory(prefix="dctrl-regression-") as temp:
+                temp = Path(temp)
+                (temp / "esp_err.h").write_text(
+                    "#pragma once\ntypedef int esp_err_t;\n#define ESP_OK 0\n"
+                    "#define ESP_ERR_INVALID_ARG 1\n#define ESP_ERR_INVALID_RESPONSE 2\n")
+                (temp / "board_profile.h").write_text(
+                    "#pragma once\ntypedef struct board_uart_config board_uart_config_t;\n")
+                includes = [temp] + [ROOT / "components" / component / "include"
+                                     for component in ("chassis", "line_sensor", "control", "vehicle_state")]
+                sources = [ROOT / "tools/line_following_regression.c",
+                           ROOT / "components/line_sensor/line_sensor_protocol.c",
+                           ROOT / "components/chassis/dflink_motion_codec.c"]
+                sources += [ROOT / "components/control" / (name + ".c") for name in
+                            ("motion_contracts", "motion_inputs", "line_interpreter", "motion_policy",
+                             "motion_executor", "line_trace_policy")]
+                for color, white in (("black", 0), ("white", 1)):
+                    executable = temp / color
+                    args = ["cc", "-std=c11", "-Wall", "-Wextra", "-Werror", "-O1",
+                            "-fsanitize=address,undefined", "-fno-omit-frame-pointer",
+                            "-DDCTRL_TRACK_WHITE=" + str(white)]
+                    for include in includes:
+                        args += ["-I", include]
+                    run(args + sources + ["-o", executable], color + " native regression compilation")
+                    run([executable], color + " sensor/steering/recovery/wire regressions")
 
         BUILD.mkdir(parents=True, exist_ok=True)
         config = BUILD / "sdkconfig"
@@ -172,11 +189,20 @@ def main():
             if path.is_file() and path.name not in keep and path.suffix in {".bin", ".gz", ".zip", ".elf", ".hex", ".uf2"}:
                 removed.append(str(path.relative_to(ROOT)))
                 path.unlink()
-        for directory in (ROOT / "build-esp32c3", ROOT / "backups", ROOT / "releases/v1-first-tuning-stable"):
+        for directory in (() if options.development else
+                          (ROOT / "build-esp32c3", ROOT / "backups", ROOT / "releases/v1-first-tuning-stable")):
             if directory.exists():
                 removed.append(str(directory.relative_to(ROOT)))
                 remove_tree(directory)
-        report = {"version": VERSION, "status": "passed", "firmwares": records,
+        report = {"version": VERSION, "status": "built" if options.build_only else "passed", "development": options.development,
+                  "regression_tests": "skipped_by_user" if options.build_only else "passed",
+                  "motion_mapping": "(-Vx,+Vy,+Wz) relative to DHelper",
+                  "linear_speed_gears_m_s": [0.02, 0.05, 0.10],
+                  "line_turn_limits_deg_s": [16, 20, 20],
+                  "line_error": "clamp(sum(sign(w)*(abs(w)/7)^2),-2,2); no averaging",
+                  "miniapp_speed_mapping": {"input": [0, 0.25, 1, 3], "output_m_s": [0, 0.02, 0.05, 0.10],
+                                            "mode": "continuous radial; remote only; Wz unchanged"},
+                  "chassis_baud": 460800, "line_sensor_baud": 115200, "firmwares": records,
                   "checks": state["completed_steps"], "removed_old_artifacts": removed,
                   "hardware_tested": False, "elapsed_seconds": round(time.time() - started, 1)}
         (RELEASE / "manifest.json").write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n")
@@ -186,12 +212,17 @@ def main():
             "- 白线版：`" + records[1]["file"] + "`，用于深色背景上的白线。\n\n"
             "两份均为 ESP32-C3 / 4MB 完整合并固件，烧录地址 **0x0**。包含引导程序、分区表与应用。"
             "烧录会清除旧参数，PID 和档位恢复默认；识别颜色固定在固件中，不受旧参数影响。\n\n"
-            "DF-Link 使用 `02/62/LEN12` 持续速度，单位 m/s、m/s、rad/s，正值左转。"
+            "底盘链路为 **460800 8N1**，底盘 MCU 对应串口也必须设为 460800；循迹传感器保持115200。\n\n"
+            "DF-Link 使用 `02/62/LEN12` 持续速度，单位 m/s、m/s、rad/s；输入正值左转，"
+            "共用底盘输出层相对DHelper使用(-Vx,+Vy,+Wz)，保留前后修正，横移与旋转恢复输入符号。"
             "上电待机，准备后启动循迹；找线先左后右，找线超时或收到停止命令时停车。\n\n"
-            "已通过黑白传感器解析、纠偏、找线、停车及协议编码离线测试和两版 ESP-IDF 编译；"
+            + ("本次按用户要求仅编译、打包，未运行回归测试或运动测试；" if options.build_only else
+               "已通过黑白传感器解析、纠偏、找线、停车及协议编码离线测试和两版 ESP-IDF 编译；") +
             "尚未实车验证。首次使用从一档开始，检查左右纠偏、弯道、找线与停车。"
-            "原有速度/PID数值保留，不代表已在新版底盘完成标定。\n\n"
-            "校验和与检查记录见 `manifest.json`。重新构建：`python3 tools/build_line_firmwares.py`。\n")
+            "循迹使用二次光电管权重直接求和、限幅[-2,2]，三档转向上限16/20/20度每秒；巡线线速度三档为0.02/0.05/0.10 m/s；现有小程序的旧0.25/1/3平移速度由固件连续映射到同一组满推速度，无需更新手机；PID和旋转保留，实车效果由用户确认。\n\n"
+            "校验和与检查记录见 `manifest.json`。重新构建：`python3 tools/build_line_firmwares.py"
+            + (" --development" if options.development else "")
+            + (" --build-only" if options.build_only else "") + "`。\n")
         remove_tree(BUILD)
         # Installed tools stay available; downloaded installation archives are disposable.
         shutil.rmtree(ROOT / ".idf-tools/dist", ignore_errors=True)

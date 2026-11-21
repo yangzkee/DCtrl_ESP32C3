@@ -9,7 +9,8 @@ elseif(DCTRL_LINE_COLOR STREQUAL "white")
 else()
     message(FATAL_ERROR "DCTRL_LINE_COLOR must be black or white")
 endif()
-set(PROJECT_VER "1.1.0-${DCTRL_LINE_COLOR}")
+# Preserve the exact version identity of the user-validated R5 images.
+set(PROJECT_VER "1.1.0-dev460800-r5-${DCTRL_LINE_COLOR}")
 
 include($ENV{IDF_PATH}/tools/cmake/project.cmake)
 project(DCar-Liner)

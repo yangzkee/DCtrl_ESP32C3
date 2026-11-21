@@ -1,4 +1,5 @@
 #include "chassis_uart.h"
+#include "miniapp_motion_mapping.h"
 
 #include <stdbool.h>
 #include <stddef.h>
@@ -20,6 +21,8 @@ static const char *TAG = "chassis_uart";
 static board_uart_config_t s_config;
 static bool s_ready;
 static SemaphoreHandle_t s_uart_mutex;
+static uint8_t s_remote_frame[DFLINK_MAX_FRAME_BYTES];
+static size_t s_remote_frame_len;
 
 static uint16_t checksum16(const uint8_t *buffer, size_t len)
 {
@@ -83,7 +86,11 @@ static size_t build_dflink_frame(uint8_t a, uint8_t b, const uint8_t *payload, u
 
 static esp_err_t write_bytes_locked(const uint8_t *frame, size_t frame_len)
 {
-    int written = uart_write_bytes(s_config.port, frame, frame_len);
+    uint8_t output[DFLINK_MAX_FRAME_BYTES];
+    if (!chassis_motion_map_output(frame, frame_len, output, sizeof(output))) {
+        return ESP_ERR_INVALID_ARG;
+    }
+    int written = uart_write_bytes(s_config.port, output, frame_len);
     if (written != (int)frame_len) {
         return ESP_FAIL;
     }
@@ -310,21 +317,42 @@ esp_err_t chassis_uart_send_motion(const chassis_motion_cmd_t *cmd)
     ESP_RETURN_ON_FALSE(s_ready && cmd != NULL, ESP_ERR_INVALID_STATE, TAG, "chassis uart not ready");
     ESP_RETURN_ON_ERROR(take_uart_mutex(pdMS_TO_TICKS(100)), TAG, "take uart mutex");
 
+    s_remote_frame_len = 0; // Explicit stop/local motion ends any partial remote frame.
     esp_err_t err = send_motion_command_locked(cmd, NULL);
     give_uart_mutex();
     return err;
 }
 
-esp_err_t chassis_uart_write_raw(const uint8_t *bytes, size_t len, uint32_t *tx_bytes)
+esp_err_t chassis_uart_write_dflink(const uint8_t *bytes, size_t len, uint32_t *tx_bytes)
 {
     ESP_RETURN_ON_FALSE(s_ready && bytes != NULL && len > 0, ESP_ERR_INVALID_ARG, TAG, "invalid raw write");
     ESP_RETURN_ON_ERROR(take_uart_mutex(pdMS_TO_TICKS(100)), TAG, "take raw uart mutex");
 
-    esp_err_t err = write_bytes_locked(bytes, len);
-    give_uart_mutex();
-    if (err == ESP_OK && tx_bytes != NULL) {
-        *tx_bytes += (uint32_t)len;
+    esp_err_t err = ESP_OK;
+    for (size_t i = 0; i < len; ++i) {
+        if (s_remote_frame_len == 0 && bytes[i] != DFLINK_FRAME_HEAD) {
+            err = ESP_ERR_INVALID_ARG;
+            break;
+        }
+        s_remote_frame[s_remote_frame_len++] = bytes[i];
+        if (s_remote_frame_len < 6) continue;
+        const size_t expected = (size_t)s_remote_frame[5] + 9;
+        if (expected > sizeof(s_remote_frame)) {
+            err = ESP_ERR_INVALID_SIZE;
+            break;
+        }
+        if (s_remote_frame_len < expected) continue;
+        if (!miniapp_motion_map_frame(s_remote_frame, expected, s_remote_frame, sizeof(s_remote_frame))) {
+            err = ESP_ERR_INVALID_ARG;
+            break;
+        }
+        err = write_bytes_locked(s_remote_frame, expected);
+        s_remote_frame_len = 0;
+        if (err != ESP_OK) break;
+        if (tx_bytes != NULL) *tx_bytes += (uint32_t)expected;
     }
+    if (err != ESP_OK) s_remote_frame_len = 0;
+    give_uart_mutex();
     return err;
 }
 
@@ -358,16 +386,14 @@ esp_err_t chassis_uart_diag_command(const char *command, chassis_diag_result_t *
         }
         return stop_err;
     }
-    if (strcmp(selected, "xyz") == 0 || strcmp(selected, "xyz0") == 0 || strcmp(selected, "xyzrx") == 0 ||
-        strcmp(selected, "xyz500") == 0 || strcmp(selected, "xyz500rx") == 0) {
+    if (strcmp(selected, "xyz") == 0 || strcmp(selected, "xyz0") == 0 || strcmp(selected, "xyzrx") == 0) {
         ESP_RETURN_ON_ERROR(take_uart_mutex(pdMS_TO_TICKS(200)), TAG, "take xyz mutex");
         const bool is_zero = strcmp(selected, "xyz0") == 0;
-        const bool is_scaled_500 = strcmp(selected, "xyz500") == 0 || strcmp(selected, "xyz500rx") == 0;
-        const bool wait_for_rx = strcmp(selected, "xyzrx") == 0 || strcmp(selected, "xyz500rx") == 0;
+        const bool wait_for_rx = strcmp(selected, "xyzrx") == 0;
         const chassis_motion_cmd_t cmd = {
-            .vx_mm_s = is_zero ? 0 : (is_scaled_500 ? 500 : 50),
+            .vx_mm_s = is_zero ? 0 : 20,
             .vy_mm_s = 0,
-            .angular_mdeg_s = (is_zero || is_scaled_500) ? 0 : 5729,
+            .angular_mdeg_s = is_zero ? 0 : 5729,
         };
         if (wait_for_rx) {
             ESP_ERROR_CHECK_WITHOUT_ABORT(uart_flush_input(s_config.port));

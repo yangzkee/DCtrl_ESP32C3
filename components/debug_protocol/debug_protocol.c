@@ -274,9 +274,9 @@ static esp_err_t handle_manual_motion(cJSON *root, char *response_json, size_t r
         return write_error_response(response_json, response_size, "enter_tuning_required");
     }
 
-    const int32_t default_linear = 500;
+    const int32_t default_linear = 20; // Actual 0.02 m/s.
     const int32_t default_angular = 1500;
-    const int32_t max_linear = 1500;
+    const int32_t max_linear = 100; // Actual 0.10 m/s.
     const int32_t max_angular = 10000;
     const int32_t min_duration_ms = 50;
     const int32_t max_duration_ms = 3000;

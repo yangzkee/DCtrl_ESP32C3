@@ -1,37 +1,35 @@
-# DCtrl ESP32-C3 黑线 / 白线循迹固件
+# DCtrl ESP32-C3 R5 黑线 / 白线循迹固件
 
-本项目读取八路红外循迹传感器，并通过 DF-Link 持续速度指令控制小车底盘。V1.1.0 提供两个固定颜色版本：
+当前发布 R5，内部应用版本为 `1.1.0-dev460800-r5-black/white`。两份镜像直接使用本次研发产物，保持与实际烧录文件一致。
 
 | 固件 | 适用线路 |
 | --- | --- |
-| [黑线版 V1.1.0 下载](https://differ-tech.pages.dev/dctrl-flasher/DCtrl_V1.1.0_black-line.bin) | 浅色背景上的黑线 |
-| [白线版 V1.1.0 下载](https://differ-tech.pages.dev/dctrl-flasher/DCtrl_V1.1.0_white-line.bin) | 深色背景上的白线 |
+| [R5 黑线版下载](https://differ-tech.pages.dev/dctrl-flasher/DCtrl_V1.1.0-dev460800-r5_black-line.bin) | 浅色背景上的黑线 |
+| [R5 白线版下载](https://differ-tech.pages.dev/dctrl-flasher/DCtrl_V1.1.0-dev460800-r5_white-line.bin) | 深色背景上的白线 |
 
-两份均为 ESP32-C3 / 4MB 完整合并固件，**烧录地址为 `0x0`**，包含 bootloader、分区表与应用。烧录会清除旧参数；目标颜色不会被旧 NVS 设置覆盖。
+[网页烧录入口](https://differ-tech.pages.dev/portal/view/dctrl-flasher)支持选择颜色。均为ESP32-C3 / 4MB完整合并镜像，从 **0x0** 烧录，包含bootloader、分区表和应用；更新会清除旧NVS参数，PID和档位恢复默认。正式文件和SHA-256位于 `release-packages/`，产物不纳入Git。
 
-[网页烧录入口](https://differ-tech.pages.dev/portal/view/dctrl-flasher)支持选择黑线或白线版本。本地构建产物位于 `release-packages/`，不纳入 Git。
-
-## 构建与验证
-
-```sh
-python3 tools/build_line_firmwares.py
-```
-
-单入口在累计 300 秒内完成两版离线回归、ESP-IDF 编译、合并、完整性及版本校验，然后清理本项目旧固件和历史发布包。发布记录与 SHA-256 位于 `release-packages/manifest.json`。编译使用 ESP-IDF v5.5.4，`scripts/idf.sh` 优先使用项目 `.idf-tools/` 工具链。
-
-黑色传感器值为 `0`，白色为 `1`；由 `DCTRL_LINE_COLOR=black|white` 选择目标颜色。两版共享纠偏、丢线找回和停车逻辑。底盘使用 `02/62/LEN12`，三个数值为 m/s、m/s、rad/s，S32 小端 ×10000，正转向为左转；角速度不按发送周期缩放。
-
-## 接线与使用
+## 接线
 
 | 用途 | ESP TX | ESP RX | 波特率 |
 | --- | --- | --- | --- |
-| 底盘 UART1 | GPIO4 | GPIO5 | 115200 |
-| 循迹传感器 UART0 | GPIO2 | GPIO3 | 115200 |
+| 底盘 UART1 | GPIO4 | GPIO5 | 460800 8N1 |
+| 循迹传感器 UART0 | GPIO2 | GPIO3 | 115200 8N1 |
 
-ESP TX 接外设 RX，ESP RX 接外设 TX，所有设备共地，UART 使用 3.3V 逻辑。USB Serial/JTAG 用于控制台和烧录。传感器通道 x1 约定在车辆左侧、x8 在右侧。
+ESP TX接外设RX，ESP RX接外设TX，所有设备共地，UART为3.3V逻辑。USB Serial/JTAG用于日志与烧录。传感器x1在车辆左侧、x8在右侧。底盘对应串口必须设为460800。
 
-上电待机；DHelper 小程序先自检准备，再启动循迹。BLE 默认广播 `DCtrl`，调参命令及启动/停止协议沿用原接口。Wi-Fi 诊断后备通过 BLE `W1` 开启。
+## 当前运动策略
 
-速度档位和 PID 数值保留原设置，尚未在新版底盘实车标定。首次试车从一档开始，验证左右纠偏、直线、弯道、丢线找回和停车。编译或离线测试通过不代表实车验收通过。
+- 巡线实际线速度：一档0.02、二档0.05、三档0.10 m/s；转弯上限16/20/20°/s。
+- 各命中光电管按位置 `w=-7,-5,-3,-1,1,3,5,7` 贡献 `sign(w)*(abs(w)/7)^2`，直接求和，限幅[-2,2]，不按管数求平均；同侧累加，左右抵消。无目标线仍进入独立摆扫找线。
+- 现有小程序无需更新：遥控入口将旧平移值0.25/1/3连续径向映射至0.02/0.05/0.10 m/s，两个分量同比缩放，Wz及零速不变；巡线/手动/诊断不重复缩放。旧帧无档位编号，映射按速度大小计算。
+- 最终底盘方向映射相对DHelper为 `(-Vx,+Vy,+Wz)`，仅执行一次。底盘协议为 `02/62/LEN12`、S32LE×10000，单位m/s、m/s、rad/s；无旧底盘经验速度倍率。
+- 上电待机；BLE广播 `DCtrl`，小程序自检准备后启动巡线，显式停止/断连时停车。Wi-Fi后备通过BLE `W1`按需开启。
 
-使用说明：`docs/system-guide.html`。开发与协议说明：`docs/developer-guide.md`。当前策略：`docs/strategy-register.html`。
+## 构建与验证记录
+
+`python3 tools/build_line_firmwares.py` 为统一构建入口，产物在 `release-packages/`。本地研发可加 `--development` 输出到 `output/firmware-dev/`；开发构建仅编译打包可再加 `--build-only`，该模式会明确记录回归测试跳过。构建使用ESP-IDF v5.5.4与项目 `.idf-tools/`，累计300秒上限。
+
+本次R5两版已编译并完成镜像完整性校验；黑线版已在新ESP32-C3烧录并确认启动版本。白线版未烧录，R5遵循用户要求未重跑回归或整车运动测试，不宣称两版均已完成实车验证。PID保留当前设定，首次使用从一档开始。
+
+使用说明见 `docs/system-guide.html`；开发说明见 `docs/developer-guide.md`；策略和模块边界分别见 `docs/strategy-register.html` 与 `references/module-contracts.md`。

@@ -17,6 +17,7 @@ extern "C" {
 #define DFLINK_MOTION_VELOCITY_PAYLOAD_BYTES 12
 
 typedef struct {
+    // Physical mm/s. Encoding divides by 1000 only to express m/s; no chassis gain.
     int32_t vx_mm_s;
     int32_t vy_mm_s;
     // DFLink Wz angular velocity: positive is left / counterclockwise.
@@ -25,6 +26,11 @@ typedef struct {
 
 #define DFLINK_MOTION_FRAME_BYTES 21
 size_t chassis_motion_encode(const chassis_motion_cmd_t *cmd, uint8_t *frame, size_t capacity);
+bool chassis_dflink_frame_valid(const uint8_t *frame, size_t length);
+
+// Shared output mapping relative to DHelper: (-Vx, +Vy, +Wz).
+// Other valid DF-Link commands are copied unchanged. Reject malformed/overflowing frames.
+bool chassis_motion_map_output(const uint8_t *frame, size_t length, uint8_t *output, size_t capacity);
 
 #ifdef __cplusplus
 }

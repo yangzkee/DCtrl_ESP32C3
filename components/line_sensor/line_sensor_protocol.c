@@ -13,19 +13,37 @@ const char *line_sensor_target_color(void)
     return DCTRL_TRACK_WHITE ? "white" : "black";
 }
 
-int8_t line_sensor_calculate_offset(uint8_t bits)
+// x1 is leftmost when facing forward. One source for position and quadratic weights.
+static const int8_t SENSOR_WEIGHTS[8] = {-7, -5, -3, -1, 1, 3, 5, 7};
+
+float line_sensor_calculate_weighted_error(uint8_t bits)
 {
-    // x1 is the leftmost sensor when facing forward from the vehicle.
-    static const int8_t weights[8] = {-7, -5, -3, -1, 1, 3, 5, 7};
-    int sum = 0;
-    int count = 0;
+    int numerator = 0;
     for (int i = 0; i < 8; ++i) {
         if (bits & (1U << i)) {
-            sum += weights[i];
-            count++;
+            const int weight = SENSOR_WEIGHTS[i];
+            numerator += weight * abs(weight);
         }
     }
-    return count == 0 ? 0 : (int8_t)(sum / count);
+    // Sum per-sensor signed quadratic contributions; never divide by active count.
+    if (numerator < -98) numerator = -98;
+    if (numerator > 98) numerator = 98;
+    return (float)numerator / 49.0f;
+}
+
+int8_t line_sensor_calculate_offset(uint8_t bits)
+{
+    // Bounded position summary for telemetry and existing linear-speed adaptation.
+    // Steering consumes the full weighted error directly, without this +/-7 clamp.
+    int sum = 0;
+    for (int i = 0; i < 8; ++i) {
+        if (bits & (1U << i)) {
+            sum += SENSOR_WEIGHTS[i];
+        }
+    }
+    if (sum < -7) sum = -7;
+    if (sum > 7) sum = 7;
+    return (int8_t)sum;
 }
 
 esp_err_t line_sensor_parse_digital_frame(const char *frame, uint8_t *bits)

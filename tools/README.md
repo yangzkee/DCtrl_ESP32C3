@@ -79,6 +79,12 @@ swift tools/ble_remote_tester.swift --timeout 25 --motion yaw
 
 ## 黑线与白线双固件发布
 
+当前460800及运动方向映射的研发测试使用 `python3 tools/build_line_firmwares.py --development`。输出在 `output/firmware-dev/`，版本为 `1.1.0-dev460800-r5-black/white`，不覆盖正式发布包，不推送或发布网页。
+
+`test_chassis_uart.py` 编译实际板级配置、UART驱动与协议模块，使用模拟HAL验证460800/8N1、独立115200传感器、1000条取反帧、全部20个BLE分包位置、11帧合包、巡线/遥控输出一致、零速与半帧清除、写失败/超时/锁占用、分段回包、错误校验和及无响应。两色原生回归覆盖DHelper六方向映射和定点边界，均使用ASan/UBSan。模拟测试不能替代硬件验证。
+
 执行 `python3 tools/build_line_firmwares.py`。它编译运行 `line_following_regression.c`（含 AddressSanitizer / UndefinedBehaviorSanitizer），验证黑白两版的全部 256 种传感器组合、异常输入、左右纠偏、丢线摆扫、找回、超时停车以及 DF-Link 固定单位和零速黄金帧，再编译合并两版 ESP32-C3 镜像并校验应用版本、芯片和各分段字节。累计构建/打包/检查上限 300 秒；失败保留日志及累计计时，同一任务重跑不会重置时限。
 
 通过后 `release-packages/` 只保留黑线、白线两份 `.bin`、`README.md` 与 `manifest.json`；删除本项目旧固件备份、旧构建和历史发布包。两份镜像均从 `0x0` 烧录并清除旧 NVS；颜色固定在固件内。此入口不连接硬件、不宣称实车通过。
+
+用户要求停止测试时，本地研发可加 `--build-only`，只编译和打包，不运行回归；manifest明确记录 `regression_tests=skipped_by_user`。r2使用此模式修正为 `(-Vx,+Vy,+Wz)`，未进行运动测试。

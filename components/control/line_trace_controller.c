@@ -43,8 +43,8 @@ static float get_float_param(const char *id, float fallback)
 static void read_policy_config(line_trace_policy_config_t *config)
 {
     const int32_t gear = get_int_param("speed.gear", 2);
-    int32_t base_speed_mm_s = 600;
-    int32_t max_turn_mdeg_s = 10000;
+    int32_t base_speed_mm_s = 50;
+    int32_t max_turn_mdeg_s = 20000;
     motion_speed_profile_from_gear(gear, &base_speed_mm_s, &max_turn_mdeg_s);
 
     config->base_speed_mm_s = base_speed_mm_s;

@@ -1,4 +1,5 @@
 #include <assert.h>
+#include <math.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -40,6 +41,29 @@ static void check_sensor(void)
     assert(line_sensor_calculate_offset(1) == -7);
     assert(line_sensor_calculate_offset(128) == 7);
     assert(line_sensor_calculate_offset(0x18) == 0);
+    assert(line_sensor_calculate_offset(0x03) == -7); // Saturated sum, no mean.
+    for (unsigned mask = 0; mask < 256; ++mask) {
+        const int q[8] = {-49, -25, -9, -1, 1, 9, 25, 49};
+        int sum = 0;
+        unsigned mirrored = 0;
+        for (int i = 0; i < 8; ++i) {
+            if (mask & (1U << i)) { sum += q[i]; mirrored |= 1U << (7 - i); }
+        }
+        const float error = line_sensor_calculate_weighted_error((uint8_t)mask);
+        assert(fabsf(error - (float)sum / 49.0f) < 0.00001f);
+        assert(error >= -2.0f && error <= 2.0f);
+        assert(fabsf(error + line_sensor_calculate_weighted_error((uint8_t)mirrored)) < 0.00001f);
+    }
+    assert(line_sensor_calculate_weighted_error(0x03) < -1.0f);
+    assert(line_sensor_calculate_weighted_error(0x07) < line_sensor_calculate_weighted_error(0x03));
+    assert(line_sensor_calculate_weighted_error(0x18) == 0.0f);
+    const int expected_turn[3] = {16000, 20000, 20000};
+    const int expected_speed[3] = {20, 50, 100};
+    for (int gear = 1; gear <= 3; ++gear) {
+        int32_t speed, turn;
+        motion_speed_profile_from_gear(gear, &speed, &turn);
+        assert(speed == expected_speed[gear - 1] && turn == expected_turn[gear - 1]);
+    }
 }
 
 static void check_wire(void)
@@ -60,11 +84,46 @@ static void check_wire(void)
     assert(read_s32(frame + 14) == -15708);
     assert(chassis_motion_encode(&cmd, frame, 20) == 0);
     assert(chassis_motion_encode(NULL, frame, 21) == 0);
+
+    uint8_t mapped[21];
+    cmd = (chassis_motion_cmd_t){.vx_mm_s=500, .vy_mm_s=-250, .angular_mdeg_s=90000};
+    assert(chassis_motion_encode(&cmd, frame, 21) == 21);
+    assert(chassis_motion_map_output(frame, 21, mapped, 21));
+    assert(read_s32(mapped + 6) == -5000);
+    assert(read_s32(mapped + 10) == -2500);
+    assert(read_s32(mapped + 14) == 15708);
+    assert(chassis_motion_map_output(golden_stop, 21, mapped, 21));
+    assert(memcmp(mapped, golden_stop, 21) == 0);
+    // Field correction: invert only X relative to DHelper; preserve Y and Wz.
+    for (int axis = 0; axis < 3; ++axis) {
+        for (int sign = -1; sign <= 1; sign += 2) {
+            cmd = (chassis_motion_cmd_t){0};
+            if (axis == 0) cmd.vx_mm_s = sign * 500;
+            if (axis == 1) cmd.vy_mm_s = sign * 500;
+            if (axis == 2) cmd.angular_mdeg_s = sign * 90000;
+            assert(chassis_motion_encode(&cmd, frame, 21) == 21);
+            assert(chassis_motion_map_output(frame, 21, mapped, 21));
+            const int expected_sign = axis == 0 ? -sign : sign;
+            assert(read_s32(mapped + 6 + axis * 4) == expected_sign * (axis == 2 ? 15708 : 5000));
+        }
+    }
+    frame[19] ^= 1;
+    assert(!chassis_motion_map_output(frame, 21, mapped, 21));
+    assert(!chassis_motion_map_output(NULL, 21, mapped, 21));
+    assert(!chassis_motion_map_output(golden_stop, 21, mapped, 20));
+    for (int axis = 0; axis < 3; ++axis) {
+        memcpy(frame, golden_stop, 21);
+        frame[6 + axis * 4 + 3] = 0x80; // Only X needs negation; Y/Wz retain their exact bit patterns.
+        uint16_t sum = 0;
+        for (int i = 0; i < 19; ++i) sum += frame[i];
+        frame[19] = (uint8_t)sum; frame[20] = (uint8_t)(sum >> 8);
+        assert(chassis_motion_map_output(frame, 21, mapped, 21) == (axis != 0));
+    }
 }
 
 static void check_policy(void)
 {
-    line_trace_policy_config_t config = {.base_speed_mm_s = 250, .max_turn_mdeg_s = 8000,
+    line_trace_policy_config_t config = {.base_speed_mm_s = 20, .max_turn_mdeg_s = 16000,
                                          .kp = 9000, .integral_limit = 40};
     line_trace_policy_runtime_t runtime;
     line_trace_policy_init(&runtime);
@@ -81,7 +140,7 @@ static void check_policy(void)
         assert(out.plan.chassis_cmd.vx_mm_s > 0);
         const int32_t wz = out.plan.chassis_cmd.angular_mdeg_s;
         assert(signs[i] > 0 ? wz > 0 : signs[i] < 0 ? wz < 0 : wz == 0);
-        assert(wz >= -8000 && wz <= 8000);
+        assert(wz >= -16000 && wz <= 16000);
     }
     input.sample = (line_sensor_sample_t){0};
     const uint32_t durations[] = {800, 1600, 3200, 6400, 12800, 25600, 30000};
@@ -90,7 +149,7 @@ static void check_policy(void)
         line_trace_policy_step(&runtime, &config, &input, &out);
         assert(out.phase == LINE_TRACE_PHASE_LINE_LOST);
         assert(out.plan.chassis_cmd.vx_mm_s == 0);
-        assert(out.plan.chassis_cmd.angular_mdeg_s == (i % 2 == 0 && i != 6 ? 8000 : -8000));
+        assert(out.plan.chassis_cmd.angular_mdeg_s == (i % 2 == 0 && i != 6 ? 16000 : -16000));
         assert(out.recovery_segment_index == i);
         input.now_ms += durations[i];
     }

@@ -52,18 +52,6 @@ uint8_t motion_line_quality_from_active_count(uint8_t count)
     return 30;
 }
 
-float motion_line_curved_error_from_offset(int8_t offset)
-{
-    const int32_t abs_offset = motion_clamp_i32(motion_abs_i32((int32_t)offset), 0, MOTION_LINE_MAX_OFFSET);
-    if (abs_offset == 0) {
-        return 0.0f;
-    }
-
-    const float normalized = (float)abs_offset / (float)MOTION_LINE_MAX_OFFSET;
-    const float curved = normalized * normalized;
-    return offset < 0 ? -curved : curved;
-}
-
 int32_t motion_line_adaptive_speed_mm_s(int32_t base_speed_mm_s, int8_t offset)
 {
     const int32_t abs_offset = motion_clamp_i32(motion_abs_i32((int32_t)offset), 0, MOTION_LINE_MAX_OFFSET);
@@ -86,17 +74,17 @@ void motion_speed_profile_from_gear(int32_t gear, int32_t *base_speed_mm_s, int3
 
     switch (gear) {
     case 1:
-        *base_speed_mm_s = 250;
-        *max_turn_mdeg_s = 8000;
+        *base_speed_mm_s = 20;  // 0.02 m/s = 2 cm/s.
+        *max_turn_mdeg_s = 16000;
         break;
     case 3:
-        *base_speed_mm_s = 1000;
-        *max_turn_mdeg_s = 10000;
+        *base_speed_mm_s = 100; // 0.10 m/s = 10 cm/s.
+        *max_turn_mdeg_s = 20000;
         break;
     case 2:
     default:
-        *base_speed_mm_s = 600;
-        *max_turn_mdeg_s = 10000;
+        *base_speed_mm_s = 50;  // 0.05 m/s = 5 cm/s.
+        *max_turn_mdeg_s = 20000;
         break;
     }
 }

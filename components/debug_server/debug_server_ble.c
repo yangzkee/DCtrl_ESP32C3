@@ -613,7 +613,7 @@ static int write_remote_request(struct ble_gatt_access_ctxt *ctxt)
     }
 
     uint32_t tx_bytes = 0;
-    esp_err_t err = chassis_uart_write_raw(bytes, (size_t)len, &tx_bytes);
+    esp_err_t err = chassis_uart_write_dflink(bytes, (size_t)len, &tx_bytes);
     if (err != ESP_OK) {
         ESP_LOGW(TAG, "remote bridge UART write failed: %s", esp_err_to_name(err));
         telemetry_record_remote_bridge_error("UART", (size_t)len, err);

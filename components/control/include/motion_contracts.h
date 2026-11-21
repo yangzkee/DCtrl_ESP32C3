@@ -18,7 +18,6 @@ int32_t motion_abs_i32(int32_t value);
 
 uint8_t motion_line_active_sensor_count(uint8_t bits);
 uint8_t motion_line_quality_from_active_count(uint8_t count);
-float motion_line_curved_error_from_offset(int8_t offset);
 int32_t motion_line_adaptive_speed_mm_s(int32_t base_speed_mm_s, int8_t offset);
 void motion_speed_profile_from_gear(int32_t gear, int32_t *base_speed_mm_s, int32_t *max_turn_mdeg_s);
 

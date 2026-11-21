@@ -66,7 +66,7 @@ def main() -> None:
     motion_policy = read("components/control/motion_policy.c")
     remote_tester = read("tools/ble_remote_tester.swift")
 
-    require("chassis_uart_write_raw" in ble, "remote BLE writes must forward raw bytes to chassis UART")
+    require("chassis_uart_write_dflink" in ble, "remote BLE writes must use the shared chassis DF-Link output")
     require("vehicle_state_enter_remote_bridge" in ble, "remote BLE writes must claim REMOTE_BRIDGE ownership")
     remote_write = c_function_body(ble, "write_remote_request")
     require('"OK\\n"' not in remote_write, "remote bridge success path must stay silent")

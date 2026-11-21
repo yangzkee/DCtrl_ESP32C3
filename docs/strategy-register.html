@@ -329,9 +329,9 @@
       <span class="tag motion">底盘</span>
       <table>
         <tr><th>策略</th><td>底盘使用 DFLink <code>Motion_Velocity</code>。<code>linear_mm_s</code> 是直接发给底盘的协议速度值，不保证等同真实速度。<code>angular_mdeg_s</code> 表示单条速度指令中的 Z 角速度，不是持续角速度。</td></tr>
-        <tr><th>实测事实</th><td><code>Vx=0.5</code> 是已验证的舒适手动/诊断速度；自动循线最高档当前为 <code>Vx=1.0</code>。</td></tr>
+        <tr><th>实测事实</th><td>r3按真实米制统一线速度：一档0.02、二档0.05、三档0.10 m/s；手动/诊断默认为0.02 m/s，不再采用旧底盘高速度设定。</td></tr>
         <tr><th>实现位置</th><td><code>components/chassis/chassis_uart.c</code>、<code>components/chassis/include/chassis_uart.h</code></td></tr>
-        <tr><th>验证方法</th><td>BLE 发送 <code>Cxyz500rx</code>，检查底盘回传和校验。</td></tr>
+        <tr><th>验证方法</th><td>BLE 发送 <code>Cxyzrx</code>，检查底盘回传和校验。</td></tr>
       </table>
     </article>
 
@@ -416,8 +416,8 @@
       <h3 class="strategy-title"><span class="sid">S13</span>自动循线速度档位</h3>
       <span class="tag motion">速度</span>
       <table>
-        <tr><th>策略</th><td>自动循线三档为最大协议线速度：一档 <code>250 mm/s</code> / <code>Vx=0.25</code>，二档 <code>600 mm/s</code> / <code>Vx=0.6</code>，三档 <code>1000 mm/s</code> / <code>Vx=1.0</code>。</td></tr>
-        <tr><th>Z 上限</th><td>一档 <code>8000 mdeg/s</code>，二档 <code>10000 mdeg/s</code>，三档 <code>10000 mdeg/s</code>。</td></tr>
+        <tr><th>策略</th><td>自动循线三档为最大协议线速度：一档 <code>20 mm/s</code> / <code>Vx=0.02</code>，二档 <code>50 mm/s</code> / <code>Vx=0.05</code>，三档 <code>100 mm/s</code> / <code>Vx=0.10</code>。</td></tr>
+        <tr><th>Z 上限</th><td>一档 <code>16000 mdeg/s</code>，二档 <code>20000 mdeg/s</code>，三档 <code>20000 mdeg/s</code>。</td></tr>
         <tr><th>实现位置</th><td><code>components/control/line_trace_controller.c</code></td></tr>
         <tr><th>验证方法</th><td>切换小程序档位并开始循线，telemetry 中 <code>motion.linear_mm_s</code> 不超过对应档位上限。</td></tr>
       </table>
@@ -439,8 +439,8 @@
       <span class="tag motion">转向</span>
       <table>
         <tr><th>策略</th><td>偏离中心越多，Z 角速度越大。变化同样使用先慢后快的二次曲线。</td></tr>
-        <tr><th>当前曲线</th><td>将 raw offset 归一化为 <code>-1..1</code>，再平方并保留方向后进入 PID。小偏离轻微修正，大偏离快速增大转向。</td></tr>
-        <tr><th>实现位置</th><td><code>curved_error_from_offset()</code> in <code>components/control/line_trace_policy.c</code></td></tr>
+        <tr><th>当前曲线</th><td>每颗光电管权重为 <code>sign(w)*(abs(w)/7)^2</code>，检测到目标线的贡献直接求和并限幅 <code>-2..2</code>，不除以管数；同侧累加，左右抵消。</td></tr>
+        <tr><th>实现位置</th><td><code>line_sensor_calculate_weighted_error()</code> in <code>components/line_sensor/line_sensor_protocol.c</code></td></tr>
         <tr><th>验证方法</th><td>观察 telemetry：小 offset 时 <code>motion.angular_mdeg_s</code> 不应立即撞限幅；大 offset 时应明显增大。</td></tr>
       </table>
     </article>
@@ -495,7 +495,7 @@
       <span class="tag debug">调试</span><span class="tag safety">安全</span>
       <table>
         <tr><th>策略</th><td>手动底盘测试是独立状态 <code>MANUAL_TEST</code>，只接受短时命令，有超时保护。</td></tr>
-        <tr><th>限制</th><td>线速度上限 <code>1500 mm/s</code>，Z 上限 <code>10000 mdeg/s</code>，时长 <code>50-3000 ms</code>。</td></tr>
+        <tr><th>限制</th><td>线速度上限 <code>100 mm/s</code>，Z 上限 <code>10000 mdeg/s</code>，时长 <code>50-3000 ms</code>。</td></tr>
         <tr><th>实现位置</th><td><code>components/debug_protocol/debug_protocol.c</code>、<code>components/vehicle_state/vehicle_state.c</code></td></tr>
         <tr><th>验证方法</th><td>发送 <code>manual_motion</code> 后应自动回到调参状态或安全状态。</td></tr>
       </table>

@@ -51,11 +51,11 @@ func remoteFrames(motion: String, durationMs: Int, intervalMs: Int) -> [Data] {
     let active: Data
     switch motion {
     case "forward":
-        active = motionVelocityFrame(vx: 0.5, vy: 0, wzDegreesPerSecond: 0)
+        active = motionVelocityFrame(vx: 0.25, vy: 0, wzDegreesPerSecond: 0) // Miniapp slow -> physical 0.02 m/s.
     case "backward":
-        active = motionVelocityFrame(vx: -0.5, vy: 0, wzDegreesPerSecond: 0)
+        active = motionVelocityFrame(vx: -0.25, vy: 0, wzDegreesPerSecond: 0)
     case "strafe":
-        active = motionVelocityFrame(vx: 0, vy: 0.5, wzDegreesPerSecond: 0)
+        active = motionVelocityFrame(vx: 0, vy: 0.25, wzDegreesPerSecond: 0)
     case "yaw":
         active = motionVelocityFrame(vx: 0, vy: 0, wzDegreesPerSecond: 5)
     default:

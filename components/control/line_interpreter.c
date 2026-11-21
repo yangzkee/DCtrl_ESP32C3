@@ -20,7 +20,7 @@ void line_interpreter_evaluate(const line_trace_policy_input_t *input, line_geom
     geometry->active_sensor_count = motion_line_active_sensor_count(input->sample.bits);
     geometry->line_quality = motion_line_quality_from_active_count(geometry->active_sensor_count);
     geometry->lost_line = input->sample.bits == 0;
-    geometry->curved_error = motion_line_curved_error_from_offset(input->sample.offset);
+    geometry->curved_error = line_sensor_calculate_weighted_error(input->sample.bits);
 
     if (geometry->lost_line) {
         geometry->pattern = LINE_PATTERN_LOST;
